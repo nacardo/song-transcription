@@ -83,8 +83,14 @@ button[type='button']:not(:disabled):hover {
 }
 
 .word.correct {
-  color: var(--text-h);
-  border-bottom-color: var(--text-h);
+  color: var(--correct);
+  border-bottom-color: var(--correct);
+  background: transparent;
+}
+
+.word.wrong {
+  color: var(--wrong);
+  border-bottom-color: var(--wrong);
   background: transparent;
 }
 

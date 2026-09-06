@@ -40,6 +40,17 @@ function normalize(value: string): string {
     .trim()
 }
 
+type Status = 'empty' | 'typing' | 'wrong' | 'correct'
+
+function statusOf(answer: string, target: string): Status {
+  const a = normalize(answer)
+  if (!a) return 'empty'
+  const t = normalize(target)
+  if (a === t) return 'correct'
+  if (t.startsWith(a)) return 'typing'
+  return 'wrong'
+}
+
 export default function App() {
   const [lyrics, setLyrics] = useState('')
   const [submitted, setSubmitted] = useState<string | null>(null)
@@ -101,16 +112,13 @@ export default function App() {
             )
           }
           const answer = answers[token.index] ?? ''
-          const isCorrect = normalize(answer) === normalize(token.text)
-          const showReveal = revealed && !isCorrect
+          const status = statusOf(answer, token.text)
+          const showReveal = revealed && status !== 'correct'
+          const stateClass = showReveal ? 'revealed' : status
           return (
             <input
               key={i}
-              className={
-                'word' +
-                (isCorrect ? ' correct' : '') +
-                (showReveal ? ' revealed' : '')
-              }
+              className={`word ${stateClass}`}
               size={Math.max(token.text.length, 2)}
               value={showReveal ? token.text : answer}
               readOnly={showReveal}
