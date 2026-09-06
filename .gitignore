@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+
+# Python (for future backend)
+__pycache__/
+*.py[cod]
+.venv/
+.env
