@@ -55,7 +55,8 @@ export default function App() {
   const [lyrics, setLyrics] = useState('')
   const [submitted, setSubmitted] = useState<string | null>(null)
   const [answers, setAnswers] = useState<Record<number, string>>({})
-  const [revealed, setRevealed] = useState(false)
+  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
 
   const tokens = useMemo(
     () => (submitted ? tokenize(submitted) : []),
@@ -67,13 +68,38 @@ export default function App() {
     if (!trimmed) return
     setSubmitted(trimmed)
     setAnswers({})
-    setRevealed(false)
+    setRevealed(new Set())
+    setFocusedIndex(null)
   }
 
   function reset() {
     setSubmitted(null)
     setAnswers({})
-    setRevealed(false)
+    setRevealed(new Set())
+    setFocusedIndex(null)
+  }
+
+  function revealWord(index: number) {
+    setRevealed((prev) => {
+      if (prev.has(index)) return prev
+      const next = new Set(prev)
+      next.add(index)
+      return next
+    })
+  }
+
+  function revealAll() {
+    setRevealed(() => {
+      const next = new Set<number>()
+      for (const token of tokens) {
+        if (token.kind !== 'word') continue
+        if (statusOf(answers[token.index] ?? '', token.text) === 'correct') {
+          continue
+        }
+        next.add(token.index)
+      }
+      return next
+    })
   }
 
   if (!submitted) {
@@ -113,32 +139,58 @@ export default function App() {
           }
           const answer = answers[token.index] ?? ''
           const status = statusOf(answer, token.text)
-          const showReveal = revealed && status !== 'correct'
-          const stateClass = showReveal ? 'revealed' : status
+          const isRevealed = revealed.has(token.index)
+          const stateClass = isRevealed ? 'revealed' : status
+          const isFocused = focusedIndex === token.index
           return (
-            <input
-              key={i}
-              className={`word ${stateClass}`}
-              size={Math.max(token.text.length, 2)}
-              value={showReveal ? token.text : answer}
-              readOnly={showReveal}
-              onChange={(e) =>
-                setAnswers((prev) => ({
-                  ...prev,
-                  [token.index]: e.target.value,
-                }))
-              }
-              aria-label={`Word ${token.index + 1}`}
-              autoCapitalize="off"
-              autoCorrect="off"
-              spellCheck={false}
-            />
+            <span key={i} className="word-slot">
+              <input
+                className={`word ${stateClass}`}
+                size={Math.max(token.text.length, 2)}
+                value={isRevealed ? token.text : answer}
+                readOnly={isRevealed}
+                onChange={(e) =>
+                  setAnswers((prev) => ({
+                    ...prev,
+                    [token.index]: e.target.value,
+                  }))
+                }
+                onFocus={() => setFocusedIndex(token.index)}
+                onBlur={() =>
+                  setFocusedIndex((cur) =>
+                    cur === token.index ? null : cur,
+                  )
+                }
+                onKeyDown={(e) => {
+                  if (e.key === '?' && !isRevealed) {
+                    e.preventDefault()
+                    revealWord(token.index)
+                  }
+                }}
+                aria-label={`Word ${token.index + 1}`}
+                autoCapitalize="off"
+                autoCorrect="off"
+                spellCheck={false}
+              />
+              {isFocused && !isRevealed && (
+                <button
+                  type="button"
+                  className="reveal-hint"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => revealWord(token.index)}
+                  aria-label={`Reveal word ${token.index + 1}`}
+                  title="Reveal this word (?)"
+                >
+                  ?
+                </button>
+              )}
+            </span>
           )
         })}
       </div>
       <div className="actions">
-        <button type="button" onClick={() => setRevealed((r) => !r)}>
-          {revealed ? 'Hide answers' : 'Reveal answers'}
+        <button type="button" onClick={revealAll}>
+          Reveal all
         </button>
         <button type="button" onClick={reset}>
           New song

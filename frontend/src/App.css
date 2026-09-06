@@ -63,6 +63,11 @@ button[type='button']:not(:disabled):hover {
   color: var(--text-h);
 }
 
+.word-slot {
+  display: inline;
+  white-space: nowrap;
+}
+
 .word {
   font: inherit;
   border: none;
@@ -73,6 +78,35 @@ button[type='button']:not(:disabled):hover {
   text-align: center;
   color: var(--text);
   min-width: 1.5em;
+}
+
+.reveal-hint {
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  width: 1.4em;
+  height: 1.4em;
+  padding: 0;
+  margin: 0 0 0 2px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0.7;
+  transition: opacity 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.reveal-hint:hover,
+.reveal-hint:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  border-color: var(--accent);
+  outline: none;
 }
 
 .word:focus {
