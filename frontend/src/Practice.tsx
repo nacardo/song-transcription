@@ -1,6 +1,6 @@
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { statusOf, tokenize } from './lyrics'
-import type { Song } from './storage'
+import { clearProgress, getProgress, saveProgress, type Song } from './storage'
 
 type Props = {
   song: Song
@@ -9,12 +9,28 @@ type Props = {
 }
 
 export function Practice({ song, onBack, onEdit }: Props) {
-  const [answers, setAnswers] = useState<Record<number, string>>({})
-  const [revealed, setRevealed] = useState<Set<number>>(new Set())
+  const initial = useMemo(() => getProgress(song.id), [song.id])
+  const [answers, setAnswers] = useState<Record<number, string>>(
+    initial?.answers ?? {},
+  )
+  const [revealed, setRevealed] = useState<Set<number>>(
+    new Set(initial?.revealed ?? []),
+  )
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef(new Map<number, HTMLInputElement>())
 
   const tokens = useMemo(() => tokenize(song.lyrics), [song.lyrics])
+
+  useEffect(() => {
+    saveProgress(song.id, { answers, revealed: Array.from(revealed) })
+  }, [song.id, answers, revealed])
+
+  function resetProgress() {
+    if (!confirm('Reset progress for this song?')) return
+    setAnswers({})
+    setRevealed(new Set())
+    clearProgress(song.id)
+  }
 
   function focusNextWord(fromIndex: number) {
     let target = fromIndex + 1
@@ -141,6 +157,9 @@ export function Practice({ song, onBack, onEdit }: Props) {
       <div className="actions">
         <button type="button" onClick={revealAll}>
           Reveal all
+        </button>
+        <button type="button" onClick={resetProgress}>
+          Reset progress
         </button>
       </div>
     </main>

@@ -7,7 +7,14 @@ export type Song = {
   updatedAt: number
 }
 
+export type Progress = {
+  answers: Record<number, string>
+  revealed: number[]
+  updatedAt: number
+}
+
 const KEY = 'song-transcription:songs'
+const PROGRESS_KEY = 'song-transcription:progress'
 
 function readAll(): Song[] {
   try {
@@ -45,8 +52,9 @@ export function saveSong(input: {
   if (input.id) {
     const idx = songs.findIndex((s) => s.id === input.id)
     if (idx >= 0) {
+      const existing = songs[idx]
       const updated: Song = {
-        ...songs[idx],
+        ...existing,
         title: input.title,
         artist: input.artist,
         lyrics: input.lyrics,
@@ -54,6 +62,8 @@ export function saveSong(input: {
       }
       songs[idx] = updated
       writeAll(songs)
+      // Word indices are position-based; a lyrics edit can shift them.
+      if (existing.lyrics !== input.lyrics) clearProgress(input.id)
       return updated
     }
   }
@@ -72,4 +82,40 @@ export function saveSong(input: {
 
 export function deleteSong(id: string) {
   writeAll(readAll().filter((s) => s.id !== id))
+  clearProgress(id)
+}
+
+function readProgress(): Record<string, Progress> {
+  try {
+    const raw = localStorage.getItem(PROGRESS_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeProgress(all: Record<string, Progress>) {
+  localStorage.setItem(PROGRESS_KEY, JSON.stringify(all))
+}
+
+export function getProgress(songId: string): Progress | undefined {
+  return readProgress()[songId]
+}
+
+export function saveProgress(
+  songId: string,
+  progress: Omit<Progress, 'updatedAt'>,
+) {
+  const all = readProgress()
+  all[songId] = { ...progress, updatedAt: Date.now() }
+  writeProgress(all)
+}
+
+export function clearProgress(songId: string) {
+  const all = readProgress()
+  if (!(songId in all)) return
+  delete all[songId]
+  writeProgress(all)
 }
