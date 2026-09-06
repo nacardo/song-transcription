@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import './App.css'
 
 type Token =
@@ -57,6 +57,19 @@ export default function App() {
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [revealed, setRevealed] = useState<Set<number>>(new Set())
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
+  const inputRefs = useRef(new Map<number, HTMLInputElement>())
+
+  function focusNextWord(fromIndex: number) {
+    let target = fromIndex + 1
+    while (inputRefs.current.has(target)) {
+      const el = inputRefs.current.get(target)!
+      if (!el.readOnly) {
+        el.focus()
+        return
+      }
+      target++
+    }
+  }
 
   const tokens = useMemo(
     () => (submitted ? tokenize(submitted) : []),
@@ -145,6 +158,10 @@ export default function App() {
           return (
             <span key={i} className="word-slot">
               <input
+                ref={(el) => {
+                  if (el) inputRefs.current.set(token.index, el)
+                  else inputRefs.current.delete(token.index)
+                }}
                 className={`word ${stateClass}`}
                 size={Math.max(token.text.length, 2)}
                 value={isRevealed ? token.text : answer}
@@ -165,6 +182,9 @@ export default function App() {
                   if (e.key === '?' && !isRevealed) {
                     e.preventDefault()
                     revealWord(token.index)
+                  } else if (e.key === ' ') {
+                    e.preventDefault()
+                    focusNextWord(token.index)
                   }
                 }}
                 aria-label={`Word ${token.index + 1}`}
@@ -175,6 +195,7 @@ export default function App() {
               {isFocused && !isRevealed && (
                 <button
                   type="button"
+                  tabIndex={-1}
                   className="reveal-hint"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => revealWord(token.index)}
