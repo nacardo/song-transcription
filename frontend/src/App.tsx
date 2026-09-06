@@ -4,19 +4,31 @@ import './App.css'
 type Token =
   | { kind: 'word'; text: string; index: number }
   | { kind: 'gap'; text: string }
+  | { kind: 'header'; text: string }
 
 const WORD_TOKEN = /(\p{L}[\p{L}\p{M}'’-]*)|([^\p{L}]+)/gu
+const HEADER_LINE = /^\s*\[(.+)\]\s*$/
 
 function tokenize(lyrics: string): Token[] {
   const tokens: Token[] = []
   let wordIndex = 0
-  for (const match of lyrics.matchAll(WORD_TOKEN)) {
-    if (match[1] !== undefined) {
-      tokens.push({ kind: 'word', text: match[1], index: wordIndex++ })
-    } else {
-      tokens.push({ kind: 'gap', text: match[2] })
+  const lines = lyrics.split('\n')
+  lines.forEach((line, i) => {
+    const headerMatch = line.match(HEADER_LINE)
+    const isLast = i === lines.length - 1
+    if (headerMatch) {
+      tokens.push({ kind: 'header', text: headerMatch[1].trim() })
+      return
     }
-  }
+    for (const match of line.matchAll(WORD_TOKEN)) {
+      if (match[1] !== undefined) {
+        tokens.push({ kind: 'word', text: match[1], index: wordIndex++ })
+      } else {
+        tokens.push({ kind: 'gap', text: match[2] })
+      }
+    }
+    if (!isLast) tokens.push({ kind: 'gap', text: '\n' })
+  })
   return tokens
 }
 
@@ -80,6 +92,13 @@ export default function App() {
         {tokens.map((token, i) => {
           if (token.kind === 'gap') {
             return <span key={i}>{token.text}</span>
+          }
+          if (token.kind === 'header') {
+            return (
+              <h2 key={i} className="section">
+                {token.text}
+              </h2>
+            )
           }
           const answer = answers[token.index] ?? ''
           const isCorrect = normalize(answer) === normalize(token.text)

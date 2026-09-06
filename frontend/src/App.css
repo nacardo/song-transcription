@@ -88,6 +88,19 @@ button[type='button']:not(:disabled):hover {
   background: transparent;
 }
 
+.section {
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text);
+  margin: 1.5rem 0 0.25rem;
+}
+
+.section:first-child {
+  margin-top: 0;
+}
+
 .word.revealed {
   color: var(--accent);
   border-bottom-color: var(--accent);
