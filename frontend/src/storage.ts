@@ -11,6 +11,7 @@ export type Song = {
 export type Progress = {
   answers: Record<number, string>
   revealed: number[]
+  positionMs?: number
   updatedAt: number
 }
 

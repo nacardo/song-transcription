@@ -348,20 +348,26 @@ export async function setDevice(id: string): Promise<void> {
   await fetchConnectState().catch(() => {})
 }
 
-export async function playTrack(uri: string): Promise<void> {
+export async function playTrack(
+  uri: string,
+  positionMs?: number,
+): Promise<void> {
   if (!deviceId) await initializePlayer()
+  const body: Record<string, unknown> = { uris: [uri] }
+  if (positionMs && positionMs > 0) body.position_ms = Math.round(positionMs)
   const res = await apiFetch(`/me/player/play?device_id=${deviceId}`, {
     method: 'PUT',
-    body: JSON.stringify({ uris: [uri] }),
+    body: JSON.stringify(body),
   })
   if (!res.ok && res.status !== 204) {
     throw new Error(`Play failed: ${res.status} ${await res.text()}`)
   }
   // Optimistic: assume it started.
+  const startPos = positionMs && positionMs > 0 ? Math.round(positionMs) : 0
   base = base
-    ? { ...base, isPlaying: true, timestamp: Date.now(), trackUri: uri }
+    ? { ...base, isPlaying: true, timestamp: Date.now(), trackUri: uri, position: startPos }
     : {
-        position: 0,
+        position: startPos,
         timestamp: Date.now(),
         isPlaying: true,
         duration: 0,

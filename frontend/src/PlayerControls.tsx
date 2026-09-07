@@ -18,7 +18,14 @@ import {
 
 type Props = {
   spotifyUri: string
+  // Position (ms) to resume from on the first play — used when the user had
+  // paused this song before and we saved where they were.
+  initialPositionMs?: number
 }
+
+// Only resume from a saved position if it's meaningfully into the track;
+// tiny offsets are just noise from a false start.
+const RESUME_THRESHOLD_MS = 5000
 
 function formatTime(ms: number): string {
   if (!isFinite(ms) || ms < 0) return '0:00'
@@ -28,7 +35,7 @@ function formatTime(ms: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-export function PlayerControls({ spotifyUri }: Props) {
+export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
   const [state, setState] = useState<PlayerState | null>(null)
   const [device, setDeviceInfo] = useState<DeviceInfo>({
     mode: null,
@@ -118,7 +125,11 @@ export function PlayerControls({ spotifyUri }: Props) {
 
   async function handlePlayPause() {
     if (!isCurrent) {
-      await guard(() => playTrack(spotifyUri))
+      const resume =
+        initialPositionMs && initialPositionMs >= RESUME_THRESHOLD_MS
+          ? initialPositionMs
+          : undefined
+      await guard(() => playTrack(spotifyUri, resume))
     } else {
       await guard(() => togglePlay())
     }

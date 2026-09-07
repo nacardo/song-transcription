@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
 import { statusOf, tokenize } from './lyrics'
+import { subscribeToState } from './spotify-player'
 import { clearProgress, getProgress, saveProgress, type Song } from './storage'
 
 type Props = {
@@ -17,19 +18,46 @@ export function Practice({ song, onBack, onEdit }: Props) {
   const [revealed, setRevealed] = useState<Set<number>>(
     new Set(initial?.revealed ?? []),
   )
+  const [positionMs, setPositionMs] = useState<number | undefined>(
+    initial?.positionMs,
+  )
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef(new Map<number, HTMLInputElement>())
 
   const tokens = useMemo(() => tokenize(song.lyrics), [song.lyrics])
 
   useEffect(() => {
-    saveProgress(song.id, { answers, revealed: Array.from(revealed) })
-  }, [song.id, answers, revealed])
+    saveProgress(song.id, {
+      answers,
+      revealed: Array.from(revealed),
+      positionMs,
+    })
+  }, [song.id, answers, revealed, positionMs])
+
+  // Track playback position for the current song. We only capture positions
+  // for our track (not something else the user has playing on Spotify), and
+  // throttle updates so we don't rewrite localStorage 4× a second.
+  useEffect(() => {
+    let lastCapture = 0
+    let wasPlaying = false
+    const unsub = subscribeToState((state) => {
+      if (!state || state.trackUri !== song.spotifyUri) return
+      const transition = wasPlaying !== state.isPlaying
+      wasPlaying = state.isPlaying
+      const now = Date.now()
+      if (transition || (state.isPlaying && now - lastCapture >= 2000)) {
+        lastCapture = now
+        setPositionMs(state.position)
+      }
+    })
+    return unsub
+  }, [song.spotifyUri])
 
   function resetProgress() {
     if (!confirm('Reset progress for this song?')) return
     setAnswers({})
     setRevealed(new Set())
+    setPositionMs(undefined)
     clearProgress(song.id)
   }
 
@@ -83,7 +111,12 @@ export function Practice({ song, onBack, onEdit }: Props) {
         </button>
       </header>
 
-      {song.spotifyUri && <PlayerControls spotifyUri={song.spotifyUri} />}
+      {song.spotifyUri && (
+        <PlayerControls
+          spotifyUri={song.spotifyUri}
+          initialPositionMs={initial?.positionMs}
+        />
+      )}
 
       <div className="lyrics">
         {tokens.map((token, i) => {
