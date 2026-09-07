@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { PlayerControls } from './PlayerControls'
 import { statusOf, tokenize } from './lyrics'
 import { clearProgress, getProgress, saveProgress, type Song } from './storage'
 
@@ -81,6 +82,8 @@ export function Practice({ song, onBack, onEdit }: Props) {
           Edit
         </button>
       </header>
+
+      {song.spotifyUri && <PlayerControls spotifyUri={song.spotifyUri} />}
 
       <div className="lyrics">
         {tokens.map((token, i) => {

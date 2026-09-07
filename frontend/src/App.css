@@ -261,6 +261,79 @@ input.title.invalid {
   color: var(--wrong);
 }
 
+.player-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 1.25rem;
+  flex-wrap: wrap;
+}
+
+.player-bar.muted {
+  color: var(--text);
+  font-size: 0.9rem;
+  justify-content: center;
+}
+
+.player-buttons {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.player-buttons button {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.6rem;
+  margin: 0;
+  min-width: 2.6rem;
+}
+
+.player-buttons button.play {
+  font-size: 1.05rem;
+  width: 2.6rem;
+  padding: 0.35rem 0;
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.player-time {
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+  color: var(--text);
+  min-width: 6.5em;
+  text-align: center;
+}
+
+.player-scrub {
+  flex: 1;
+  min-width: 8rem;
+  accent-color: var(--accent);
+}
+
+.player-error {
+  flex-basis: 100%;
+  color: var(--wrong);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 520px) {
+  .player-bar {
+    gap: 0.4rem;
+  }
+  .player-time {
+    order: 3;
+    min-width: 5em;
+  }
+  .player-scrub {
+    order: 4;
+    flex-basis: 100%;
+  }
+}
+
 .song-meta {
   font-size: 0.85rem;
   color: var(--text);
