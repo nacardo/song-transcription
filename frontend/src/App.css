@@ -95,6 +95,71 @@ input.title {
   flex: 1;
 }
 
+.library-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.spotify-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.spotify-status.muted {
+  opacity: 0.7;
+  font-style: italic;
+}
+
+.spotify-dot {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: #1db954;
+  box-shadow: 0 0 0 2px rgba(29, 185, 84, 0.15);
+}
+
+button.link.small {
+  padding: 0.15rem 0.35rem;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.banner {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  border: 1px solid var(--border);
+}
+
+.banner.error {
+  border-color: var(--wrong);
+  color: var(--wrong);
+  background: transparent;
+}
+
+.spotify-status .error {
+  color: var(--wrong);
+  font-size: 0.8rem;
+}
+
+@media (max-width: 520px) {
+  .library-header {
+    flex-wrap: wrap;
+  }
+  .library-header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+}
+
 .song-header-title {
   flex: 1;
   text-align: center;

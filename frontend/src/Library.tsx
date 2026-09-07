@@ -1,7 +1,10 @@
+import { SpotifyStatus } from './SpotifyStatus'
 import type { Song } from './storage'
 
 type Props = {
   songs: Song[]
+  authError: string | null
+  onDismissAuthError: () => void
   onOpen: (id: string) => void
   onEdit: (id: string) => void
   onDelete: (id: string) => void
@@ -22,15 +25,35 @@ function relativeTime(ts: number): string {
   return new Date(ts).toLocaleDateString()
 }
 
-export function Library({ songs, onOpen, onEdit, onDelete, onNew }: Props) {
+export function Library({
+  songs,
+  authError,
+  onDismissAuthError,
+  onOpen,
+  onEdit,
+  onDelete,
+  onNew,
+}: Props) {
   return (
     <main>
       <header className="library-header">
         <h1>Your songs</h1>
-        <button type="button" className="primary" onClick={onNew}>
-          + New song
-        </button>
+        <div className="library-header-actions">
+          <SpotifyStatus />
+          <button type="button" className="primary" onClick={onNew}>
+            + New song
+          </button>
+        </div>
       </header>
+
+      {authError && (
+        <div className="banner error" role="alert">
+          <span>Spotify sign-in failed: {authError}</span>
+          <button type="button" className="link" onClick={onDismissAuthError}>
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <ul className="song-list">
         {songs.map((song) => (
