@@ -553,7 +553,8 @@ input.title.invalid {
   min-width: 1.5em;
 }
 
-.reveal-hint {
+.reveal-hint,
+.lookup-hint {
   font: inherit;
   font-size: 0.75em;
   line-height: 1;
@@ -575,11 +576,19 @@ input.title.invalid {
 }
 
 .reveal-hint:hover,
-.reveal-hint:focus-visible {
+.reveal-hint:focus-visible,
+.lookup-hint:hover,
+.lookup-hint:focus-visible {
   opacity: 1;
   color: var(--accent);
   border-color: var(--accent);
   outline: none;
+}
+
+/* Emoji glyphs render smaller than text at the same font-size on most
+   platforms; nudge it up so it fills the round button visually. */
+.lookup-hint {
+  font-size: 0.85em;
 }
 
 .word:focus {

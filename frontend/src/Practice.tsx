@@ -22,6 +22,12 @@ type Props = {
 // keystroke is wasteful when we only care about eventual consistency.
 const SAVE_DEBOUNCE_MS = 500
 
+function wordReferenceUrl(word: string): string {
+  // Spanish → English lookup. WordReference blocks iframe embedding, so this
+  // is always opened in a new tab (see the wordreference-lookup memory).
+  return `https://www.wordreference.com/es/en/translation.asp?spen=${encodeURIComponent(word)}`
+}
+
 // Practice hydrates progress from the backend before rendering the main UI.
 // Otherwise the user could type into an empty input for a beat, then have the
 // fetched progress overwrite their answers on arrival.
@@ -273,9 +279,11 @@ function PracticeReady({
                   )
                 }
                 onKeyDown={(e) => {
-                  if (e.key === '?' && !isRevealed) {
+                  if (e.key === '?') {
                     e.preventDefault()
-                    revealWord(token.index)
+                    if (!isRevealed && status !== 'correct') {
+                      revealWord(token.index)
+                    }
                   } else if (e.key === ' ') {
                     e.preventDefault()
                     focusNextWord(token.index)
@@ -286,19 +294,38 @@ function PracticeReady({
                 autoCorrect="off"
                 spellCheck={false}
               />
-              {isFocused && !isRevealed && (
-                <button
-                  type="button"
-                  tabIndex={-1}
-                  className="reveal-hint"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => revealWord(token.index)}
-                  aria-label={`Reveal word ${token.index + 1}`}
-                  title="Reveal this word (?)"
-                >
-                  ?
-                </button>
-              )}
+              {isFocused &&
+                (isRevealed || status === 'correct' ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="lookup-hint"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() =>
+                      window.open(
+                        wordReferenceUrl(token.text),
+                        '_blank',
+                        'noopener,noreferrer',
+                      )
+                    }
+                    aria-label={`Look up "${token.text}" on WordReference`}
+                    title={`Look up "${token.text}" on WordReference`}
+                  >
+                    📖
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="reveal-hint"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => revealWord(token.index)}
+                    aria-label={`Reveal word ${token.index + 1}`}
+                    title="Reveal this word (?)"
+                  >
+                    ?
+                  </button>
+                ))}
             </span>
           )
         })}
