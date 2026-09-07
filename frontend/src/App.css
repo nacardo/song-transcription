@@ -270,6 +270,11 @@ input.title.invalid {
   border-radius: 8px;
   margin: 0 0 1.25rem;
   flex-wrap: wrap;
+  /* Keep the controls in view while the user scrolls through lyrics. */
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--bg);
 }
 
 .player-bar.muted {

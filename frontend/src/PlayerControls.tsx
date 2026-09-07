@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isAuthenticated } from './spotify-auth'
 import {
   initializePlayer,
@@ -52,6 +52,11 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
   const [devices, setDevices] = useState<Device[] | null>(null)
   const [showPicker, setShowPicker] = useState(false)
 
+  // Ref to the latest play/pause handler so the global keydown listener
+  // (mounted once) always calls the current closure. Populated mid-render
+  // below once handlePlayPause is defined.
+  const playPauseRef = useRef<() => void>(() => {})
+
   useEffect(() => {
     if (!isAuthenticated()) return
     let cancelled = false
@@ -69,6 +74,18 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
       unsubS()
       unsubD()
     }
+  }, [])
+
+  // Global backtick shortcut. Attached once; delegates to the ref.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== '`') return
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
+      e.preventDefault()
+      playPauseRef.current()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
   }, [])
 
   if (!isAuthenticated()) {
@@ -146,6 +163,10 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
     }
   }
 
+  // Update the shortcut handler ref every render so the keydown listener
+  // sees the latest closure (which captures the latest isCurrent/isPlaying).
+  playPauseRef.current = handlePlayPause
+
   return (
     <div className="player-bar">
       <div className="player-buttons">
@@ -171,6 +192,7 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           onClick={handlePlayPause}
           disabled={busy && !isCurrent}
           aria-label={isPlaying ? 'Pause' : 'Play'}
+          title={`${isPlaying ? 'Pause' : 'Play'} (\`)`}
         >
           {isPlaying ? '⏸' : '▶'}
         </button>
