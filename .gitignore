@@ -10,3 +10,6 @@ __pycache__/
 .env
 .env.local
 .env.*.local
+
+# Backend data (SQLite lives here)
+backend/data/

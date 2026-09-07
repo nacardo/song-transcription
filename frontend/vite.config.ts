@@ -9,5 +9,13 @@ export default defineConfig({
     // your phone on the LAN can both reach the dev server.
     host: true,
     port: 5173,
+    // Forward /api/* to the FastAPI backend so the frontend keeps its
+    // single-origin story and never has to think about CORS.
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 })

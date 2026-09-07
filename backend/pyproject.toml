@@ -1,0 +1,14 @@
+[project]
+name = "song-transcription-backend"
+version = "0.1.0"
+description = "FastAPI backend for the song transcription app"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi[standard]>=0.115",
+    "sqlmodel>=0.0.22",
+    "pydantic-settings>=2.5",
+    "uvicorn[standard]>=0.32",
+]
+
+[tool.uv]
+package = false
