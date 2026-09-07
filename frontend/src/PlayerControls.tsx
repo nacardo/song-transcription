@@ -2,11 +2,17 @@ import { useEffect, useState } from 'react'
 import { isAuthenticated } from './spotify-auth'
 import {
   initializePlayer,
+  listDevices,
   playTrack,
+  reinitializePlayer,
   seekBy,
   seekTo,
+  setDevice,
+  subscribeToDevice,
   subscribeToState,
   togglePlay,
+  type Device,
+  type DeviceInfo,
   type PlayerState,
 } from './spotify-player'
 
@@ -24,19 +30,33 @@ function formatTime(ms: number): string {
 
 export function PlayerControls({ spotifyUri }: Props) {
   const [state, setState] = useState<PlayerState | null>(null)
+  const [device, setDeviceInfo] = useState<DeviceInfo>({
+    mode: null,
+    deviceId: null,
+    deviceName: null,
+  })
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [ready, setReady] = useState(false)
+  const [devices, setDevices] = useState<Device[] | null>(null)
+  const [showPicker, setShowPicker] = useState(false)
 
   useEffect(() => {
     if (!isAuthenticated()) return
     let cancelled = false
-    initializePlayer().catch((err: unknown) => {
-      if (!cancelled) setError(String(err))
-    })
-    const unsub = subscribeToState(setState)
+    initializePlayer()
+      .then(() => {
+        if (!cancelled) setReady(true)
+      })
+      .catch((err: unknown) => {
+        if (!cancelled) setError(String(err))
+      })
+    const unsubS = subscribeToState(setState)
+    const unsubD = subscribeToDevice(setDeviceInfo)
     return () => {
       cancelled = true
-      unsub()
+      unsubS()
+      unsubD()
     }
   }, [])
 
@@ -47,11 +67,6 @@ export function PlayerControls({ spotifyUri }: Props) {
       </div>
     )
   }
-
-  const isCurrent = state?.trackUri === spotifyUri
-  const isPlaying = !!(isCurrent && state?.isPlaying)
-  const position = isCurrent ? state?.position ?? 0 : 0
-  const duration = isCurrent ? state?.duration ?? 0 : 0
 
   async function guard(fn: () => Promise<void>) {
     setError(null)
@@ -64,6 +79,42 @@ export function PlayerControls({ spotifyUri }: Props) {
       setBusy(false)
     }
   }
+
+  async function refreshDevicePicker() {
+    setError(null)
+    try {
+      const list = await listDevices()
+      setDevices(list)
+      setShowPicker(true)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  async function pickDevice(id: string) {
+    setShowPicker(false)
+    await guard(() => setDevice(id))
+  }
+
+  async function retryInit() {
+    setError(null)
+    setReady(false)
+    try {
+      await reinitializePlayer()
+      setReady(true)
+    } catch (e) {
+      setError(String(e))
+    }
+  }
+
+  if (!ready && !error) {
+    return <div className="player-bar muted">Connecting to Spotify…</div>
+  }
+
+  const isCurrent = state?.trackUri === spotifyUri
+  const isPlaying = !!(isCurrent && state?.isPlaying)
+  const position = isCurrent ? state?.position ?? 0 : 0
+  const duration = isCurrent ? state?.duration ?? 0 : 0
 
   async function handlePlayPause() {
     if (!isCurrent) {
@@ -135,7 +186,62 @@ export function PlayerControls({ spotifyUri }: Props) {
         aria-label="Playback position"
       />
 
-      {error && <div className="player-error">{error}</div>}
+      <div className="player-device">
+        <span className="player-device-name" title={device.deviceName ?? ''}>
+          {device.mode === 'sdk' ? 'This tab' : device.deviceName ?? '—'}
+        </span>
+        <button
+          type="button"
+          className="link small"
+          onClick={refreshDevicePicker}
+        >
+          Change
+        </button>
+      </div>
+
+      {showPicker && (
+        <div className="device-picker">
+          <div className="device-picker-header">
+            <span>Pick device</span>
+            <button
+              type="button"
+              className="link small"
+              onClick={() => setShowPicker(false)}
+            >
+              Close
+            </button>
+          </div>
+          {devices && devices.length === 0 && (
+            <div className="muted">No devices available.</div>
+          )}
+          <ul>
+            {devices?.map((d) => (
+              <li key={d.id}>
+                <button
+                  type="button"
+                  className="link"
+                  onClick={() => pickDevice(d.id)}
+                >
+                  {d.name}{' '}
+                  <span className="muted">
+                    ({d.type}
+                    {d.isActive ? ', active' : ''})
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {error && (
+        <div className="player-error">
+          {error}
+          <button type="button" className="link small" onClick={retryInit}>
+            Retry
+          </button>
+        </div>
+      )}
     </div>
   )
 }

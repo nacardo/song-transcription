@@ -1,10 +1,14 @@
-// Spotify Web Playback SDK wrapper. Creates a "browser tab" playback device,
-// handles play/pause/seek locally, and interpolates position between events
-// for a smooth UI without polling the API.
+// Spotify playback wrapper. Two modes with the same public API:
+//   - "sdk"     : desktop; audio plays in the browser tab via the Web Playback
+//                 SDK.  Fast local seek/toggle.
+//   - "connect" : mobile / any browser where the SDK can't create a device.
+//                 We control an external Spotify Connect device (the user's
+//                 phone Spotify app, another Connect speaker, etc.) via the
+//                 Web API. Slightly higher latency; UI is identical.
 
 import { getValidAccessToken } from './spotify-auth'
 
-// Minimal SDK type declarations — we don't pull in @types/spotify-web-playback-sdk.
+// --- Minimal Web Playback SDK types (avoids an extra @types dep) ---
 type SdkTrack = { uri: string; name: string }
 type SdkState = {
   paused: boolean
@@ -48,6 +52,8 @@ declare global {
   }
 }
 
+export type PlayerMode = 'sdk' | 'connect'
+
 export type PlayerState = {
   isPlaying: boolean
   position: number
@@ -55,12 +61,30 @@ export type PlayerState = {
   trackUri: string | null
 }
 
-let sdkLoad: Promise<void> | null = null
-let initPromise: Promise<string> | null = null
-let player: SdkPlayer | null = null
-let deviceId: string | null = null
+export type Device = {
+  id: string
+  name: string
+  type: string
+  isActive: boolean
+}
 
-// Base snapshot from the SDK; we extrapolate current position from this.
+export type DeviceInfo = {
+  mode: PlayerMode | null
+  deviceId: string | null
+  deviceName: string | null
+}
+
+const SDK_SRC = 'https://sdk.scdn.co/spotify-player.js'
+const API = 'https://api.spotify.com/v1'
+
+let sdkLoad: Promise<void> | null = null
+let initPromise: Promise<void> | null = null
+let sdkPlayer: SdkPlayer | null = null
+
+let mode: PlayerMode | null = null
+let deviceId: string | null = null
+let deviceName: string | null = null
+
 let base:
   | {
       position: number
@@ -71,25 +95,12 @@ let base:
     }
   | null = null
 
-const listeners = new Set<(state: PlayerState | null) => void>()
+const stateListeners = new Set<(state: PlayerState | null) => void>()
+const deviceListeners = new Set<(info: DeviceInfo) => void>()
 let tickHandle: number | null = null
+let connectPollHandle: number | null = null
 
-function loadSdk(): Promise<void> {
-  if (sdkLoad) return sdkLoad
-  sdkLoad = new Promise<void>((resolve, reject) => {
-    if (window.Spotify) {
-      resolve()
-      return
-    }
-    window.onSpotifyWebPlaybackSDKReady = () => resolve()
-    const script = document.createElement('script')
-    script.src = 'https://sdk.scdn.co/spotify-player.js'
-    script.async = true
-    script.onerror = () => reject(new Error('Failed to load Spotify SDK'))
-    document.head.appendChild(script)
-  })
-  return sdkLoad
-}
+// ---------- helpers ----------
 
 function computeState(): PlayerState | null {
   if (!base) return null
@@ -106,111 +117,301 @@ function computeState(): PlayerState | null {
   }
 }
 
-function notify() {
+function notifyState() {
   const state = computeState()
-  for (const l of listeners) l(state)
+  for (const l of stateListeners) l(state)
 }
 
-function updateBase(sdk: SdkState | null) {
-  if (!sdk) {
-    base = null
-  } else {
-    base = {
-      position: sdk.position,
-      timestamp: Date.now(),
-      isPlaying: !sdk.paused,
-      duration: sdk.duration,
-      trackUri: sdk.track_window?.current_track?.uri ?? null,
-    }
-  }
-  notify()
+function notifyDevice() {
+  const info: DeviceInfo = { mode, deviceId, deviceName }
+  for (const l of deviceListeners) l(info)
+}
+
+function updateBaseFromSdk(sdk: SdkState | null) {
+  base = sdk
+    ? {
+        position: sdk.position,
+        timestamp: Date.now(),
+        isPlaying: !sdk.paused,
+        duration: sdk.duration,
+        trackUri: sdk.track_window?.current_track?.uri ?? null,
+      }
+    : null
+  notifyState()
 }
 
 function startTicking() {
   if (tickHandle !== null) return
-  tickHandle = window.setInterval(notify, 250)
+  tickHandle = window.setInterval(notifyState, 250)
 }
 
-export async function initializePlayer(): Promise<string> {
-  if (deviceId) return deviceId
+// ---------- SDK mode ----------
+
+function loadSdkScript(): Promise<void> {
+  if (sdkLoad) return sdkLoad
+  sdkLoad = new Promise<void>((resolve, reject) => {
+    if (window.Spotify) return resolve()
+    window.onSpotifyWebPlaybackSDKReady = () => resolve()
+    const script = document.createElement('script')
+    script.src = SDK_SRC
+    script.async = true
+    script.onerror = () => reject(new Error('Failed to load Spotify SDK'))
+    document.head.appendChild(script)
+  })
+  return sdkLoad
+}
+
+async function connectSdk(): Promise<{ id: string; name: string }> {
+  await loadSdkScript()
+  if (!window.Spotify) throw new Error('Spotify SDK unavailable')
+  const name = 'Song Transcription'
+  return new Promise<{ id: string; name: string }>((resolve, reject) => {
+    const p = new window.Spotify!.Player({
+      name,
+      getOAuthToken: (cb) => {
+        getValidAccessToken()
+          .then(cb)
+          .catch(() => cb(''))
+      },
+      volume: 0.7,
+    })
+    p.addListener('ready', ({ device_id }) => {
+      sdkPlayer = p
+      resolve({ id: device_id, name })
+    })
+    p.addListener('initialization_error', ({ message }) =>
+      reject(new Error(`Init error: ${message}`)),
+    )
+    p.addListener('authentication_error', ({ message }) =>
+      reject(new Error(`Auth error: ${message}`)),
+    )
+    p.addListener('account_error', ({ message }) =>
+      reject(new Error(`Account error: ${message} (Premium required)`)),
+    )
+    p.addListener('player_state_changed', (state) => updateBaseFromSdk(state))
+    p.connect()
+  })
+}
+
+// ---------- Connect mode ----------
+
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const token = await getValidAccessToken()
+  return fetch(`${API}${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${token}`,
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers ?? {}),
+    },
+  })
+}
+
+export async function listDevices(): Promise<Device[]> {
+  const res = await apiFetch('/me/player/devices')
+  if (!res.ok) throw new Error(`Devices failed: ${res.status}`)
+  const data = (await res.json()) as {
+    devices: Array<{
+      id: string
+      name: string
+      type: string
+      is_active: boolean
+    }>
+  }
+  return data.devices.map((d) => ({
+    id: d.id,
+    name: d.name,
+    type: d.type,
+    isActive: d.is_active,
+  }))
+}
+
+async function pickConnectDevice(): Promise<{ id: string; name: string }> {
+  const devices = await listDevices()
+  if (devices.length === 0) {
+    throw new Error(
+      'No Spotify device available. Open Spotify on your phone (tap play on anything) or on another device, then retry.',
+    )
+  }
+  const active = devices.find((d) => d.isActive)
+  if (active) return { id: active.id, name: active.name }
+  const nonComputer = devices.find((d) => d.type !== 'Computer')
+  if (nonComputer) return { id: nonComputer.id, name: nonComputer.name }
+  return { id: devices[0].id, name: devices[0].name }
+}
+
+async function fetchConnectState(): Promise<void> {
+  const res = await apiFetch('/me/player')
+  if (res.status === 204) return // nothing playing
+  if (!res.ok) return
+  const data = (await res.json()) as {
+    is_playing: boolean
+    progress_ms: number
+    item: { uri: string; duration_ms: number } | null
+  }
+  if (!data.item) return
+  base = {
+    position: data.progress_ms,
+    timestamp: Date.now(),
+    isPlaying: data.is_playing,
+    duration: data.item.duration_ms,
+    trackUri: data.item.uri,
+  }
+  notifyState()
+}
+
+function startConnectPolling() {
+  if (connectPollHandle !== null) return
+  connectPollHandle = window.setInterval(() => {
+    fetchConnectState().catch(() => {})
+  }, 2000)
+}
+
+function stopConnectPolling() {
+  if (connectPollHandle === null) return
+  window.clearInterval(connectPollHandle)
+  connectPollHandle = null
+}
+
+// ---------- Public API ----------
+
+function isMobileUA(): boolean {
+  return /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+}
+
+export async function initializePlayer(): Promise<void> {
   if (initPromise) return initPromise
   initPromise = (async () => {
-    await loadSdk()
-    if (!window.Spotify) throw new Error('Spotify SDK failed to initialize')
-    return new Promise<string>((resolve, reject) => {
-      const p = new window.Spotify!.Player({
-        name: 'Song Transcription',
-        getOAuthToken: (cb) => {
-          getValidAccessToken()
-            .then(cb)
-            .catch(() => cb(''))
-        },
-        volume: 0.7,
-      })
-      p.addListener('ready', ({ device_id }) => {
-        deviceId = device_id
-        player = p
+    // Try the SDK on non-mobile first; fall back to Connect on any failure.
+    if (!isMobileUA()) {
+      try {
+        const d = await connectSdk()
+        mode = 'sdk'
+        deviceId = d.id
+        deviceName = d.name
         startTicking()
-        resolve(device_id)
-      })
-      p.addListener('initialization_error', ({ message }) =>
-        reject(new Error(`Init error: ${message}`)),
-      )
-      p.addListener('authentication_error', ({ message }) =>
-        reject(new Error(`Auth error: ${message}`)),
-      )
-      p.addListener('account_error', ({ message }) =>
-        reject(new Error(`Account error: ${message} (Spotify Premium required)`)),
-      )
-      p.addListener('player_state_changed', (state) => updateBase(state))
-      p.connect()
-    })
+        notifyDevice()
+        return
+      } catch {
+        // fall through
+      }
+    }
+    const d = await pickConnectDevice()
+    mode = 'connect'
+    deviceId = d.id
+    deviceName = d.name
+    await fetchConnectState().catch(() => {})
+    startTicking()
+    startConnectPolling()
+    notifyDevice()
   })()
+  initPromise.catch(() => {
+    // Allow another attempt via reinitializePlayer().
+    initPromise = null
+  })
   return initPromise
 }
 
-export function subscribeToState(
-  cb: (state: PlayerState | null) => void,
-): () => void {
-  listeners.add(cb)
-  cb(computeState())
-  return () => {
-    listeners.delete(cb)
+// Force re-detection (used by "Retry" when devices weren't available yet).
+export async function reinitializePlayer(): Promise<void> {
+  stopConnectPolling()
+  initPromise = null
+  mode = null
+  deviceId = null
+  deviceName = null
+  notifyDevice()
+  return initializePlayer()
+}
+
+export async function setDevice(id: string): Promise<void> {
+  const devices = await listDevices()
+  const target = devices.find((d) => d.id === id)
+  if (!target) throw new Error('Device not available anymore')
+  // Transfer playback so subsequent play/pause/seek target this device.
+  await apiFetch('/me/player', {
+    method: 'PUT',
+    body: JSON.stringify({
+      device_ids: [id],
+      play: base?.isPlaying ?? false,
+    }),
+  })
+  deviceId = id
+  deviceName = target.name
+  // In Connect mode we keep polling; in SDK mode, switching to another device
+  // means the SDK browser device is no longer where audio comes out, so we
+  // move to Connect mode for control.
+  if (mode === 'sdk' && !devices.find((d) => d.id === id && d.name === 'Song Transcription')) {
+    mode = 'connect'
+    startConnectPolling()
   }
+  notifyDevice()
+  await fetchConnectState().catch(() => {})
 }
 
 export async function playTrack(uri: string): Promise<void> {
-  const id = await initializePlayer()
-  const token = await getValidAccessToken()
-  const res = await fetch(
-    `https://api.spotify.com/v1/me/player/play?device_id=${id}`,
-    {
-      method: 'PUT',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ uris: [uri] }),
-    },
-  )
+  if (!deviceId) await initializePlayer()
+  const res = await apiFetch(`/me/player/play?device_id=${deviceId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ uris: [uri] }),
+  })
   if (!res.ok && res.status !== 204) {
     throw new Error(`Play failed: ${res.status} ${await res.text()}`)
+  }
+  // Optimistic: assume it started.
+  base = base
+    ? { ...base, isPlaying: true, timestamp: Date.now(), trackUri: uri }
+    : {
+        position: 0,
+        timestamp: Date.now(),
+        isPlaying: true,
+        duration: 0,
+        trackUri: uri,
+      }
+  notifyState()
+  if (mode === 'connect') {
+    setTimeout(() => fetchConnectState().catch(() => {}), 400)
   }
 }
 
 export async function togglePlay(): Promise<void> {
-  if (!player) throw new Error('Player not ready')
-  await player.togglePlay()
+  if (mode === 'sdk' && sdkPlayer) {
+    await sdkPlayer.togglePlay()
+    return
+  }
+  const isPlaying = base?.isPlaying ?? false
+  const endpoint = isPlaying ? 'pause' : 'play'
+  const res = await apiFetch(
+    `/me/player/${endpoint}?device_id=${deviceId}`,
+    { method: 'PUT' },
+  )
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`${endpoint} failed: ${res.status}`)
+  }
+  if (base) {
+    base = { ...base, isPlaying: !isPlaying, timestamp: Date.now() }
+    notifyState()
+  }
+  if (mode === 'connect') {
+    setTimeout(() => fetchConnectState().catch(() => {}), 400)
+  }
 }
 
 export async function seekTo(positionMs: number): Promise<void> {
-  if (!player) throw new Error('Player not ready')
   const clamped = Math.max(0, Math.round(positionMs))
-  await player.seek(clamped)
-  // Update base immediately so the UI doesn't wait for the state event.
+  if (mode === 'sdk' && sdkPlayer) {
+    await sdkPlayer.seek(clamped)
+  } else {
+    const res = await apiFetch(
+      `/me/player/seek?position_ms=${clamped}&device_id=${deviceId}`,
+      { method: 'PUT' },
+    )
+    if (!res.ok && res.status !== 204) {
+      throw new Error(`Seek failed: ${res.status}`)
+    }
+  }
   if (base) {
     base = { ...base, position: clamped, timestamp: Date.now() }
-    notify()
+    notifyState()
   }
 }
 
@@ -222,4 +423,22 @@ export async function seekBy(seconds: number): Promise<void> {
     Math.min(state.duration || Infinity, state.position + seconds * 1000),
   )
   await seekTo(target)
+}
+
+export function subscribeToState(
+  cb: (state: PlayerState | null) => void,
+): () => void {
+  stateListeners.add(cb)
+  cb(computeState())
+  return () => {
+    stateListeners.delete(cb)
+  }
+}
+
+export function subscribeToDevice(cb: (info: DeviceInfo) => void): () => void {
+  deviceListeners.add(cb)
+  cb({ mode, deviceId, deviceName })
+  return () => {
+    deviceListeners.delete(cb)
+  }
 }
