@@ -135,6 +135,13 @@ export function Practice({ song, onBack, onEdit }: Props) {
           const isRevealed = revealed.has(token.index)
           const stateClass = isRevealed ? 'revealed' : status
           const isFocused = focusedIndex === token.index
+          // When the answer is correct, show the canonical form (with accents,
+          // capitalization, etc.) so the user sees the right spelling even if
+          // they typed the diacritic-free version. Note: correctness currently
+          // ignores diacritics — a future "strict accents" toggle would change
+          // statusOf(), and this display swap would still do the right thing.
+          const displayValue =
+            isRevealed || status === 'correct' ? token.text : answer
           return (
             <span key={i} className="word-slot">
               <input
@@ -144,7 +151,7 @@ export function Practice({ song, onBack, onEdit }: Props) {
                 }}
                 className={`word ${stateClass}`}
                 size={Math.max(token.text.length, 2)}
-                value={isRevealed ? token.text : answer}
+                value={displayValue}
                 readOnly={isRevealed}
                 onChange={(e) =>
                   setAnswers((prev) => ({
