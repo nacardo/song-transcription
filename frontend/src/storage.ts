@@ -128,41 +128,74 @@ export async function migrateLegacySongsIfNeeded(): Promise<void> {
   localStorage.setItem(MIGRATION_FLAG, '1')
 }
 
-// ---------- Progress (still localStorage; moves in Phase C) ----------
+// ---------- Progress (backend-backed) ----------
 
-const PROGRESS_KEY = 'song-transcription:progress'
+const PROGRESS_API = '/api/progress'
 
-function readProgress(): Record<string, Progress> {
-  try {
-    const raw = localStorage.getItem(PROGRESS_KEY)
-    if (!raw) return {}
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed : {}
-  } catch {
-    return {}
-  }
+export async function getProgress(
+  songId: string,
+): Promise<Progress | undefined> {
+  const res = await apiFetch(`${PROGRESS_API}/${songId}`)
+  if (res.status === 404) return undefined
+  if (!res.ok) throw new Error(`GET ${PROGRESS_API}/${songId} failed: ${res.status}`)
+  return (await res.json()) as Progress
 }
 
-function writeProgress(all: Record<string, Progress>) {
-  localStorage.setItem(PROGRESS_KEY, JSON.stringify(all))
-}
-
-export function getProgress(songId: string): Progress | undefined {
-  return readProgress()[songId]
-}
-
-export function saveProgress(
+export async function saveProgress(
   songId: string,
   progress: Omit<Progress, 'updatedAt'>,
-) {
-  const all = readProgress()
-  all[songId] = { ...progress, updatedAt: Date.now() }
-  writeProgress(all)
+): Promise<void> {
+  await apiFetch(`${PROGRESS_API}/${songId}`, {
+    method: 'PUT',
+    body: JSON.stringify(progress),
+  })
 }
 
-export function clearProgress(songId: string) {
-  const all = readProgress()
-  if (!(songId in all)) return
-  delete all[songId]
-  writeProgress(all)
+export async function clearProgress(songId: string): Promise<void> {
+  await apiFetch(`${PROGRESS_API}/${songId}`, { method: 'DELETE' })
+}
+
+const LEGACY_PROGRESS_KEY = 'song-transcription:progress'
+const PROGRESS_MIGRATION_FLAG = 'song-transcription:migrated:progress-v1'
+
+// One-shot migration for progress. Runs after songs migrate, so any song IDs
+// referenced here already exist on the backend. Orphan entries (progress for
+// a song that never made it over) are quietly skipped.
+export async function migrateLegacyProgressIfNeeded(): Promise<void> {
+  if (localStorage.getItem(PROGRESS_MIGRATION_FLAG)) return
+  const raw = localStorage.getItem(LEGACY_PROGRESS_KEY)
+  if (!raw) {
+    localStorage.setItem(PROGRESS_MIGRATION_FLAG, '1')
+    return
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    localStorage.setItem(PROGRESS_MIGRATION_FLAG, '1')
+    return
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    localStorage.setItem(PROGRESS_MIGRATION_FLAG, '1')
+    return
+  }
+  for (const [songId, prog] of Object.entries(
+    parsed as Record<string, Progress>,
+  )) {
+    if (!prog || typeof prog !== 'object') continue
+    // Backend rejects orphan progress; silently skip those.
+    const res = await apiFetch(`${PROGRESS_API}/${songId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        answers: prog.answers ?? {},
+        revealed: prog.revealed ?? [],
+        positionMs: prog.positionMs,
+      }),
+    })
+    if (!res.ok && res.status !== 404) {
+      // Non-404 is an unexpected failure; log and keep going.
+      console.warn(`Progress migration for ${songId} failed: ${res.status}`)
+    }
+  }
+  localStorage.setItem(PROGRESS_MIGRATION_FLAG, '1')
 }

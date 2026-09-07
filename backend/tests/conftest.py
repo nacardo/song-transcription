@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.pool import StaticPool
 from sqlmodel import Session, SQLModel, create_engine
 
-from app.db import get_session
+from app.db import enable_sqlite_foreign_keys, get_session
 from app.main import app
 
 
@@ -22,6 +22,7 @@ def session() -> Generator[Session, None, None]:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    enable_sqlite_foreign_keys(engine)
     SQLModel.metadata.create_all(engine)
     with Session(engine) as sess:
         yield sess

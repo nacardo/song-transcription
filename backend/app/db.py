@@ -1,8 +1,22 @@
 from collections.abc import Generator
 
+from sqlalchemy import Engine, event
 from sqlmodel import Session, SQLModel, create_engine
 
 from .config import ensure_data_dir, settings
+
+
+def enable_sqlite_foreign_keys(engine: Engine) -> None:
+    """SQLite doesn't enforce foreign keys by default; needed so cascade
+    deletes (song → progress) actually happen. Applied to both the runtime
+    engine and the per-test engine so behavior matches."""
+
+    @event.listens_for(engine, "connect")
+    def _(dbapi_conn, _record) -> None:  # pragma: no cover - trivial
+        cursor = dbapi_conn.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
 
 # check_same_thread=False lets a single SQLite connection be reused across
 # FastAPI's threaded request handlers. Fine for our single-user case.
@@ -11,6 +25,9 @@ if settings.database_url.startswith("sqlite"):
     _engine_kwargs["connect_args"] = {"check_same_thread": False}
 
 engine = create_engine(settings.database_url, echo=False, **_engine_kwargs)
+
+if settings.database_url.startswith("sqlite"):
+    enable_sqlite_foreign_keys(engine)
 
 
 def init_db() -> None:

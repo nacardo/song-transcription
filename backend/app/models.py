@@ -2,6 +2,7 @@ import time
 
 from pydantic import ConfigDict
 from pydantic.alias_generators import to_camel
+from sqlalchemy import JSON, Column
 from sqlmodel import Field, SQLModel
 
 
@@ -44,4 +45,42 @@ class SongPayload(SongBase):
 class SongRead(SongBase):
     id: str
     created_at: int
+    updated_at: int
+
+
+# --- Progress ---
+# One row per song. `answers` and `revealed` are stored as JSON blobs — that's
+# enough for the current UI. If we later add per-word analytics, attempts get
+# broken out into their own event table (see the backend-analytics memory).
+
+
+class ProgressBase(SQLModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    # Keys are word indices, serialized as JSON strings on the wire.
+    answers: dict[str, str] = Field(
+        default_factory=dict,
+        sa_column=Column(JSON, nullable=False),
+    )
+    revealed: list[int] = Field(
+        default_factory=list,
+        sa_column=Column(JSON, nullable=False),
+    )
+    position_ms: int | None = None
+
+
+class Progress(ProgressBase, table=True):
+    song_id: str = Field(
+        primary_key=True,
+        foreign_key="song.id",
+        ondelete="CASCADE",
+    )
+    updated_at: int = Field(default_factory=_now_ms)
+
+
+class ProgressPayload(ProgressBase):
+    pass
+
+
+class ProgressRead(ProgressBase):
     updated_at: int

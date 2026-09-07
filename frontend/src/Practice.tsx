@@ -3,7 +3,13 @@ import { PlayerControls } from './PlayerControls'
 import { statusOf, tokenize } from './lyrics'
 import type { Settings } from './settings'
 import { subscribeToState } from './spotify-player'
-import { clearProgress, getProgress, saveProgress, type Song } from './storage'
+import {
+  clearProgress,
+  getProgress,
+  saveProgress,
+  type Progress,
+  type Song,
+} from './storage'
 
 type Props = {
   song: Song
@@ -12,8 +18,74 @@ type Props = {
   onEdit: () => void
 }
 
-export function Practice({ song, settings, onBack, onEdit }: Props) {
-  const initial = useMemo(() => getProgress(song.id), [song.id])
+// Save no more often than this while the user is typing — one HTTP PUT per
+// keystroke is wasteful when we only care about eventual consistency.
+const SAVE_DEBOUNCE_MS = 500
+
+// Practice hydrates progress from the backend before rendering the main UI.
+// Otherwise the user could type into an empty input for a beat, then have the
+// fetched progress overwrite their answers on arrival.
+export function Practice(props: Props) {
+  const [loaded, setLoaded] = useState<
+    | { state: 'loading' }
+    | { state: 'ready'; initial: Progress | undefined }
+    | { state: 'error'; message: string }
+  >({ state: 'loading' })
+
+  useEffect(() => {
+    let cancelled = false
+    setLoaded({ state: 'loading' })
+    getProgress(props.song.id)
+      .then((p) => {
+        if (!cancelled) setLoaded({ state: 'ready', initial: p })
+      })
+      .catch((err: unknown) => {
+        // Treat as empty; the user can still practice, we just lose resume state.
+        console.warn('Failed to load progress', err)
+        if (!cancelled) {
+          setLoaded({
+            state: 'error',
+            message: `Couldn't load saved progress: ${err}`,
+          })
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [props.song.id])
+
+  if (loaded.state === 'loading') {
+    return (
+      <main>
+        <p className="muted">Loading…</p>
+      </main>
+    )
+  }
+
+  const initial = loaded.state === 'ready' ? loaded.initial : undefined
+  return (
+    <PracticeReady
+      key={props.song.id}
+      {...props}
+      initial={initial}
+      loadError={loaded.state === 'error' ? loaded.message : null}
+    />
+  )
+}
+
+type ReadyProps = Props & {
+  initial: Progress | undefined
+  loadError: string | null
+}
+
+function PracticeReady({
+  song,
+  settings,
+  onBack,
+  onEdit,
+  initial,
+  loadError,
+}: ReadyProps) {
   const [answers, setAnswers] = useState<Record<number, string>>(
     initial?.answers ?? {},
   )
@@ -28,17 +100,37 @@ export function Practice({ song, settings, onBack, onEdit }: Props) {
 
   const tokens = useMemo(() => tokenize(song.lyrics), [song.lyrics])
 
+  // Debounced save: clear pending write on each change, save 500 ms after the
+  // last change. `void` because we don't await inside an effect.
   useEffect(() => {
-    saveProgress(song.id, {
-      answers,
-      revealed: Array.from(revealed),
-      positionMs,
-    })
+    const t = window.setTimeout(() => {
+      void saveProgress(song.id, {
+        answers,
+        revealed: Array.from(revealed),
+        positionMs,
+      })
+    }, SAVE_DEBOUNCE_MS)
+    return () => window.clearTimeout(t)
   }, [song.id, answers, revealed, positionMs])
+
+  // Flush the latest values on unmount so navigating away doesn't lose the
+  // in-flight debounced write. Ref keeps the latest snapshot without
+  // re-registering the cleanup on every change.
+  const latestRef = useRef({ answers, revealed, positionMs })
+  latestRef.current = { answers, revealed, positionMs }
+  useEffect(() => {
+    return () => {
+      void saveProgress(song.id, {
+        answers: latestRef.current.answers,
+        revealed: Array.from(latestRef.current.revealed),
+        positionMs: latestRef.current.positionMs,
+      })
+    }
+  }, [song.id])
 
   // Track playback position for the current song. We only capture positions
   // for our track (not something else the user has playing on Spotify), and
-  // throttle updates so we don't rewrite localStorage 4× a second.
+  // throttle updates so we don't churn state 4× a second.
   useEffect(() => {
     let lastCapture = 0
     let wasPlaying = false
@@ -55,12 +147,16 @@ export function Practice({ song, settings, onBack, onEdit }: Props) {
     return unsub
   }, [song.spotifyUri])
 
-  function resetProgress() {
+  async function resetProgress() {
     if (!confirm('Reset progress for this song?')) return
     setAnswers({})
     setRevealed(new Set())
     setPositionMs(undefined)
-    clearProgress(song.id)
+    try {
+      await clearProgress(song.id)
+    } catch (err) {
+      console.warn('Failed to clear progress on server', err)
+    }
   }
 
   function focusNextWord(fromIndex: number) {
@@ -113,6 +209,12 @@ export function Practice({ song, settings, onBack, onEdit }: Props) {
           Edit
         </button>
       </header>
+
+      {loadError && (
+        <div className="banner error" role="alert">
+          <span>{loadError}</span>
+        </div>
+      )}
 
       {song.spotifyUri && (
         <PlayerControls

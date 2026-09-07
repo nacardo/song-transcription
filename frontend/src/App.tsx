@@ -13,6 +13,7 @@ import { completeLogin } from './spotify-auth'
 import {
   deleteSong,
   listSongs,
+  migrateLegacyProgressIfNeeded,
   migrateLegacySongsIfNeeded,
   saveSong,
   type Song,
@@ -57,6 +58,7 @@ export default function App() {
     ;(async () => {
       try {
         await migrateLegacySongsIfNeeded()
+        await migrateLegacyProgressIfNeeded()
         const initial = await listSongs()
         if (cancelled) return
         setSongs(initial)
