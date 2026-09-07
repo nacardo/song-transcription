@@ -1,11 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { extractTitle } from './lyrics'
+import { normalizeSpotifyUri } from './spotify'
 import type { Song } from './storage'
 
 type Props = {
   initial?: Song
   canCancel: boolean
-  onSave: (title: string, artist: string, lyrics: string) => void
+  onSave: (fields: {
+    title: string
+    artist: string
+    lyrics: string
+    spotifyUri: string
+  }) => void
   onCancel: () => void
 }
 
@@ -13,6 +19,7 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   const [title, setTitle] = useState(initial?.title ?? '')
   const [artist, setArtist] = useState(initial?.artist ?? '')
   const [lyrics, setLyrics] = useState(initial?.lyrics ?? '')
+  const [spotifyInput, setSpotifyInput] = useState(initial?.spotifyUri ?? '')
   const [titleTouched, setTitleTouched] = useState(!!initial)
 
   useEffect(() => {
@@ -21,7 +28,14 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
     if (suggested) setTitle(suggested)
   }, [lyrics, titleTouched])
 
-  const canSave = title.trim().length > 0 && lyrics.trim().length > 0
+  const spotifyUri = useMemo(
+    () => normalizeSpotifyUri(spotifyInput),
+    [spotifyInput],
+  )
+  const spotifyInvalid = spotifyInput.trim().length > 0 && spotifyUri === null
+
+  const canSave =
+    title.trim().length > 0 && lyrics.trim().length > 0 && !spotifyInvalid
 
   return (
     <main>
@@ -55,6 +69,24 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
         </div>
       </div>
 
+      <label htmlFor="spotify">Spotify link</label>
+      <input
+        id="spotify"
+        className={`title${spotifyInvalid ? ' invalid' : ''}`}
+        type="text"
+        value={spotifyInput}
+        placeholder="https://open.spotify.com/track/… or spotify:track:… (optional)"
+        onChange={(e) => setSpotifyInput(e.target.value)}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+      />
+      {spotifyInvalid && (
+        <div className="field-hint error">
+          Not a Spotify track link. Use the "Share → Copy Song Link" URL.
+        </div>
+      )}
+
       <label htmlFor="lyrics">Lyrics</label>
       <textarea
         id="lyrics"
@@ -68,7 +100,14 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
       <div className="actions">
         <button
           type="button"
-          onClick={() => onSave(title.trim(), artist.trim(), lyrics.trim())}
+          onClick={() =>
+            onSave({
+              title: title.trim(),
+              artist: artist.trim(),
+              lyrics: lyrics.trim(),
+              spotifyUri: spotifyUri ?? '',
+            })
+          }
           disabled={!canSave}
         >
           {initial ? 'Save' : 'Save & start'}

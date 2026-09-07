@@ -64,7 +64,16 @@ export function Library({
               onClick={() => onOpen(song.id)}
             >
               <span className="song-open-main">
-                <span className="song-title">{song.title}</span>
+                <span className="song-title">
+                  {song.title}
+                  {song.spotifyUri && (
+                    <span
+                      className="spotify-dot"
+                      title="Has Spotify track"
+                      aria-label="Has Spotify track"
+                    />
+                  )}
+                </span>
                 {song.artist && (
                   <span className="song-artist">{song.artist}</span>
                 )}

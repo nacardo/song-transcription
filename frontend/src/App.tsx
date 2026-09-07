@@ -43,10 +43,15 @@ export default function App() {
     setSongs(listSongs())
   }
 
-  function handleSave(title: string, artist: string, lyrics: string) {
+  function handleSave(fields: {
+    title: string
+    artist: string
+    lyrics: string
+    spotifyUri: string
+  }) {
     const editingId =
       view.name === 'paste' ? view.editingId : undefined
-    const saved = saveSong({ id: editingId, title, artist, lyrics })
+    const saved = saveSong({ id: editingId, ...fields })
     refresh()
     setView({ name: 'practice', songId: saved.id })
   }

@@ -3,6 +3,7 @@ export type Song = {
   title: string
   artist: string
   lyrics: string
+  spotifyUri: string
   createdAt: number
   updatedAt: number
 }
@@ -23,7 +24,7 @@ function readAll(): Song[] {
     const parsed = JSON.parse(raw)
     if (!Array.isArray(parsed)) return []
     // Backfill fields added after initial release.
-    return parsed.map((s) => ({ artist: '', ...s })) as Song[]
+    return parsed.map((s) => ({ artist: '', spotifyUri: '', ...s })) as Song[]
   } catch {
     return []
   }
@@ -46,6 +47,7 @@ export function saveSong(input: {
   title: string
   artist: string
   lyrics: string
+  spotifyUri: string
 }): Song {
   const songs = readAll()
   const now = Date.now()
@@ -58,6 +60,7 @@ export function saveSong(input: {
         title: input.title,
         artist: input.artist,
         lyrics: input.lyrics,
+        spotifyUri: input.spotifyUri,
         updatedAt: now,
       }
       songs[idx] = updated
@@ -72,6 +75,7 @@ export function saveSong(input: {
     title: input.title,
     artist: input.artist,
     lyrics: input.lyrics,
+    spotifyUri: input.spotifyUri,
     createdAt: now,
     updatedAt: now,
   }

@@ -242,6 +242,23 @@ button.link.small {
 
 .song-title {
   font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+input.title.invalid {
+  border-color: var(--wrong);
+}
+
+.field-hint {
+  font-size: 0.85rem;
+  color: var(--text);
+  margin: -0.5rem 0 0.75rem;
+}
+
+.field-hint.error {
+  color: var(--wrong);
 }
 
 .song-meta {
