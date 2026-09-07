@@ -15,97 +15,122 @@ export type Progress = {
   updatedAt: number
 }
 
-const KEY = 'song-transcription:songs'
-const PROGRESS_KEY = 'song-transcription:progress'
+// ---------- Songs (backend-backed) ----------
 
-// crypto.randomUUID requires a secure context; over plain http://<lan-ip>
-// (which mobile testing over the LAN uses) it throws. Fall back to a v4 UUID
-// built from crypto.getRandomValues, which is available insecure too.
-function makeId(): string {
-  try {
-    if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  } catch {
-    /* fall through */
+const SONGS_API = '/api/songs'
+
+async function apiFetch(
+  url: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const res = await fetch(url, {
+    ...init,
+    headers: {
+      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init?.headers ?? {}),
+    },
+    credentials: 'include',
+  })
+  return res
+}
+
+async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
+  const res = await apiFetch(url, init)
+  if (!res.ok) {
+    throw new Error(`${init?.method ?? 'GET'} ${url} failed: ${res.status}`)
   }
-  const bytes = new Uint8Array(16)
-  crypto.getRandomValues(bytes)
-  bytes[6] = (bytes[6] & 0x0f) | 0x40 // version 4
-  bytes[8] = (bytes[8] & 0x3f) | 0x80 // variant 10
-  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
+  return res.json() as Promise<T>
 }
 
-function readAll(): Song[] {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    // Backfill fields added after initial release.
-    return parsed.map((s) => ({ artist: '', spotifyUri: '', ...s })) as Song[]
-  } catch {
-    return []
-  }
+export async function listSongs(): Promise<Song[]> {
+  return apiJson<Song[]>(SONGS_API)
 }
 
-function writeAll(songs: Song[]) {
-  localStorage.setItem(KEY, JSON.stringify(songs))
+export async function getSong(id: string): Promise<Song | undefined> {
+  const res = await apiFetch(`${SONGS_API}/${id}`)
+  if (res.status === 404) return undefined
+  if (!res.ok) throw new Error(`GET ${SONGS_API}/${id} failed: ${res.status}`)
+  return (await res.json()) as Song
 }
 
-export function listSongs(): Song[] {
-  return readAll().sort((a, b) => b.updatedAt - a.updatedAt)
-}
-
-export function getSong(id: string): Song | undefined {
-  return readAll().find((s) => s.id === id)
-}
-
-export function saveSong(input: {
+export async function saveSong(input: {
   id?: string
   title: string
   artist: string
   lyrics: string
   spotifyUri: string
-}): Song {
-  const songs = readAll()
-  const now = Date.now()
-  if (input.id) {
-    const idx = songs.findIndex((s) => s.id === input.id)
-    if (idx >= 0) {
-      const existing = songs[idx]
-      const updated: Song = {
-        ...existing,
-        title: input.title,
-        artist: input.artist,
-        lyrics: input.lyrics,
-        spotifyUri: input.spotifyUri,
-        updatedAt: now,
-      }
-      songs[idx] = updated
-      writeAll(songs)
-      // Word indices are position-based; a lyrics edit can shift them.
-      if (existing.lyrics !== input.lyrics) clearProgress(input.id)
-      return updated
-    }
-  }
-  const created: Song = {
-    id: makeId(),
+}): Promise<Song> {
+  const body = JSON.stringify({
     title: input.title,
     artist: input.artist,
     lyrics: input.lyrics,
     spotifyUri: input.spotifyUri,
-    createdAt: now,
-    updatedAt: now,
+  })
+  if (input.id) {
+    return apiJson<Song>(`${SONGS_API}/${input.id}`, {
+      method: 'PUT',
+      body,
+    })
   }
-  songs.push(created)
-  writeAll(songs)
-  return created
+  return apiJson<Song>(SONGS_API, { method: 'POST', body })
 }
 
-export function deleteSong(id: string) {
-  writeAll(readAll().filter((s) => s.id !== id))
-  clearProgress(id)
+export async function deleteSong(id: string): Promise<void> {
+  await apiFetch(`${SONGS_API}/${id}`, { method: 'DELETE' })
 }
+
+// One-shot migration of any localStorage songs into the backend, gated by a
+// flag so it never re-runs. Progress stays in localStorage for now — Phase C
+// will migrate that separately.
+const LEGACY_SONGS_KEY = 'song-transcription:songs'
+const MIGRATION_FLAG = 'song-transcription:migrated:songs-v1'
+
+export async function migrateLegacySongsIfNeeded(): Promise<void> {
+  if (localStorage.getItem(MIGRATION_FLAG)) return
+  const raw = localStorage.getItem(LEGACY_SONGS_KEY)
+  if (!raw) {
+    localStorage.setItem(MIGRATION_FLAG, '1')
+    return
+  }
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    localStorage.setItem(MIGRATION_FLAG, '1')
+    return
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    localStorage.setItem(MIGRATION_FLAG, '1')
+    return
+  }
+  // Only migrate into an empty backend so we don't ever duplicate.
+  const existing = await listSongs()
+  if (existing.length > 0) {
+    localStorage.setItem(MIGRATION_FLAG, '1')
+    return
+  }
+  for (const s of parsed as Array<Partial<Song>>) {
+    if (!s.id || typeof s.title !== 'string' || typeof s.lyrics !== 'string') {
+      continue
+    }
+    await apiFetch(`${SONGS_API}/${s.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        title: s.title,
+        artist: s.artist ?? '',
+        lyrics: s.lyrics,
+        spotifyUri: s.spotifyUri ?? '',
+        createdAt: s.createdAt,
+        updatedAt: s.updatedAt,
+      }),
+    })
+  }
+  localStorage.setItem(MIGRATION_FLAG, '1')
+}
+
+// ---------- Progress (still localStorage; moves in Phase C) ----------
+
+const PROGRESS_KEY = 'song-transcription:progress'
 
 function readProgress(): Record<string, Progress> {
   try {

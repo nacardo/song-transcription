@@ -12,8 +12,8 @@ import {
 import { completeLogin } from './spotify-auth'
 import {
   deleteSong,
-  getSong,
   listSongs,
+  migrateLegacySongsIfNeeded,
   saveSong,
   type Song,
 } from './storage'
@@ -25,12 +25,12 @@ type View =
   | { name: 'settings' }
 
 export default function App() {
-  const [songs, setSongs] = useState<Song[]>(() => listSongs())
-  const [view, setView] = useState<View>(() =>
-    listSongs().length === 0 ? { name: 'paste' } : { name: 'library' },
-  )
+  // null = still loading from the backend. Everything downstream waits.
+  const [songs, setSongs] = useState<Song[] | null>(null)
+  const [view, setView] = useState<View>({ name: 'library' })
   const [settings, setSettings] = useState<Settings>(() => getSettings())
   const [authError, setAuthError] = useState<string | null>(null)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const callbackHandled = useRef(false)
 
   function handleSettingsChange(patch: Partial<Settings>) {
@@ -51,28 +51,61 @@ export default function App() {
       })
   }, [])
 
-  function refresh() {
-    setSongs(listSongs())
-  }
+  // Initial load: migrate any legacy localStorage songs (once), then fetch.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      try {
+        await migrateLegacySongsIfNeeded()
+        const initial = await listSongs()
+        if (cancelled) return
+        setSongs(initial)
+        // First-run: no songs → jump straight to paste, like before.
+        if (initial.length === 0) setView({ name: 'paste' })
+      } catch (err: unknown) {
+        if (!cancelled) setLoadError(String(err))
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
-  function handleSave(fields: {
+  async function handleSave(fields: {
     title: string
     artist: string
     lyrics: string
     spotifyUri: string
   }) {
-    const editingId =
-      view.name === 'paste' ? view.editingId : undefined
-    const saved = saveSong({ id: editingId, ...fields })
-    refresh()
+    const editingId = view.name === 'paste' ? view.editingId : undefined
+    const saved = await saveSong({ id: editingId, ...fields })
+    setSongs(await listSongs())
     setView({ name: 'practice', songId: saved.id })
   }
 
-  function handleDelete(id: string) {
-    deleteSong(id)
-    const remaining = listSongs()
+  async function handleDelete(id: string) {
+    await deleteSong(id)
+    const remaining = await listSongs()
     setSongs(remaining)
     if (remaining.length === 0) setView({ name: 'paste' })
+  }
+
+  if (loadError) {
+    return (
+      <main>
+        <h1>Song Transcription</h1>
+        <p className="error">Couldn't load songs: {loadError}</p>
+        <p className="muted">Is the backend running?</p>
+      </main>
+    )
+  }
+
+  if (songs === null) {
+    return (
+      <main>
+        <p className="muted">Loading…</p>
+      </main>
+    )
   }
 
   if (view.name === 'library') {
@@ -101,7 +134,9 @@ export default function App() {
   }
 
   if (view.name === 'paste') {
-    const initial = view.editingId ? getSong(view.editingId) : undefined
+    const initial = view.editingId
+      ? songs.find((s) => s.id === view.editingId)
+      : undefined
     return (
       <Paste
         initial={initial}
@@ -112,7 +147,7 @@ export default function App() {
     )
   }
 
-  const song = getSong(view.songId)
+  const song = songs.find((s) => s.id === view.songId)
   if (!song) {
     setView({ name: 'library' })
     return null
