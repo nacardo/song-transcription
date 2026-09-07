@@ -1,10 +1,12 @@
+import { apiFetch, apiJson } from './api'
+
 export type Settings = {
   requireAccents: boolean
   rewindOnResumeSeconds: number
 }
 
-// Defaults mirror the backend defaults; used until the initial fetch lands
-// and as a fallback if the backend is unreachable.
+// Defaults mirror the backend defaults; used as a fallback during in-flight
+// optimistic updates.
 export const DEFAULTS: Settings = {
   requireAccents: false,
   rewindOnResumeSeconds: 2,
@@ -13,22 +15,16 @@ export const DEFAULTS: Settings = {
 const API = '/api/settings'
 
 export async function getSettings(): Promise<Settings> {
-  const res = await fetch(API, { credentials: 'include' })
-  if (!res.ok) throw new Error(`GET ${API} failed: ${res.status}`)
-  return (await res.json()) as Settings
+  return apiJson<Settings>(API)
 }
 
 export async function saveSettings(
   patch: Partial<Settings>,
 ): Promise<Settings> {
-  const res = await fetch(API, {
+  return apiJson<Settings>(API, {
     method: 'PATCH',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(patch),
   })
-  if (!res.ok) throw new Error(`PATCH ${API} failed: ${res.status}`)
-  return (await res.json()) as Settings
 }
 
 // One-shot migration for the localStorage settings blob.
@@ -42,7 +38,6 @@ export async function migrateLegacySettingsIfNeeded(): Promise<void> {
     try {
       const parsed = JSON.parse(raw)
       if (parsed && typeof parsed === 'object') {
-        // Send only known fields; unknown keys the old client wrote get dropped.
         const patch: Partial<Settings> = {}
         if (typeof parsed.requireAccents === 'boolean') {
           patch.requireAccents = parsed.requireAccents
@@ -51,7 +46,13 @@ export async function migrateLegacySettingsIfNeeded(): Promise<void> {
           patch.rewindOnResumeSeconds = parsed.rewindOnResumeSeconds
         }
         if (Object.keys(patch).length > 0) {
-          await saveSettings(patch)
+          const res = await apiFetch(API, {
+            method: 'PATCH',
+            body: JSON.stringify(patch),
+          })
+          if (!res.ok) {
+            console.warn(`Settings migration PATCH failed: ${res.status}`)
+          }
         }
       }
     } catch {

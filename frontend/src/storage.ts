@@ -17,30 +17,9 @@ export type Progress = {
 
 // ---------- Songs (backend-backed) ----------
 
+import { apiFetch, apiJson } from './api'
+
 const SONGS_API = '/api/songs'
-
-async function apiFetch(
-  url: string,
-  init?: RequestInit,
-): Promise<Response> {
-  const res = await fetch(url, {
-    ...init,
-    headers: {
-      ...(init?.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(init?.headers ?? {}),
-    },
-    credentials: 'include',
-  })
-  return res
-}
-
-async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const res = await apiFetch(url, init)
-  if (!res.ok) {
-    throw new Error(`${init?.method ?? 'GET'} ${url} failed: ${res.status}`)
-  }
-  return res.json() as Promise<T>
-}
 
 export async function listSongs(): Promise<Song[]> {
   return apiJson<Song[]>(SONGS_API)

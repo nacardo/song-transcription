@@ -4,9 +4,10 @@ type Props = {
   settings: Settings
   onChange: (patch: Partial<Settings>) => void
   onBack: () => void
+  onLogout: () => void
 }
 
-export function SettingsView({ settings, onChange, onBack }: Props) {
+export function SettingsView({ settings, onChange, onBack, onLogout }: Props) {
   return (
     <main>
       <header className="song-header">
@@ -43,6 +44,12 @@ export function SettingsView({ settings, onChange, onBack }: Props) {
           </label>
         </li>
       </ul>
+
+      <div className="actions">
+        <button type="button" onClick={onLogout}>
+          Log out
+        </button>
+      </div>
     </main>
   )
 }

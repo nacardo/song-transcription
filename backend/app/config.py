@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     # Session cookie secret for signing. Any long random string.
     session_secret: str = "dev-insecure-change-me"
 
+    # Set true behind HTTPS (production). Left off in dev so cookies flow
+    # over http://127.0.0.1:5173 during development.
+    session_https_only: bool = False
+
 
 settings = Settings()
 

@@ -2,9 +2,14 @@ from fastapi import APIRouter, Depends
 from sqlmodel import Session
 
 from ..db import get_session
+from ..deps import require_auth
 from ..models import AppSettings, SettingsPatch, SettingsRead
 
-router = APIRouter(prefix="/api/settings", tags=["settings"])
+router = APIRouter(
+    prefix="/api/settings",
+    tags=["settings"],
+    dependencies=[Depends(require_auth)],
+)
 
 SINGLETON_ID = 1
 

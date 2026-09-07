@@ -4,9 +4,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session
 
 from ..db import get_session
+from ..deps import require_auth
 from ..models import Progress, ProgressPayload, ProgressRead, Song
 
-router = APIRouter(prefix="/api/progress", tags=["progress"])
+router = APIRouter(
+    prefix="/api/progress",
+    tags=["progress"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def _now_ms() -> int:

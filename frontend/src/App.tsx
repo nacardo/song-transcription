@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
 import { Library } from './Library'
+import { Login } from './Login'
 import { Paste } from './Paste'
 import { Practice } from './Practice'
 import { SettingsView } from './SettingsView'
+import { checkSession, logout as apiLogout, onUnauthorized } from './api'
 import {
   DEFAULTS as SETTINGS_DEFAULTS,
   getSettings,
@@ -28,6 +30,8 @@ type View =
   | { name: 'settings' }
 
 export default function App() {
+  // authed: null = still checking session, true/false = known.
+  const [authed, setAuthed] = useState<boolean | null>(null)
   // null = still loading from the backend. Everything downstream waits.
   const [songs, setSongs] = useState<Song[] | null>(null)
   const [view, setView] = useState<View>({ name: 'library' })
@@ -47,9 +51,17 @@ export default function App() {
     }
   }
 
-  // Handle the /callback landing after Spotify OAuth.
-  // Guarded against React StrictMode's double-effect in dev — an OAuth code
-  // is single-use, so exchanging it twice fails the second attempt.
+  async function handleLogout() {
+    try {
+      await apiLogout()
+    } catch (err) {
+      console.warn('Logout call failed', err)
+    }
+    setAuthed(false)
+  }
+
+  // Handle the /callback landing after Spotify OAuth. Runs regardless of app
+  // auth state — Spotify tokens are client-side and independent.
   useEffect(() => {
     if (window.location.pathname !== '/callback') return
     if (callbackHandled.current) return
@@ -61,8 +73,26 @@ export default function App() {
       })
   }, [])
 
-  // Initial load: migrate any legacy localStorage songs (once), then fetch.
+  // Initial session check.
   useEffect(() => {
+    checkSession()
+      .then(setAuthed)
+      .catch(() => setAuthed(false))
+  }, [])
+
+  // Global 401 → back to login. Fired by api.ts on any protected fetch.
+  useEffect(() => {
+    return onUnauthorized(() => setAuthed(false))
+  }, [])
+
+  // Load app data whenever we transition into authed=true; clear on unauth.
+  useEffect(() => {
+    if (!authed) {
+      setSongs(null)
+      setSettings(null)
+      setLoadError(null)
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
@@ -85,7 +115,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [authed])
 
   async function handleSave(fields: {
     title: string
@@ -106,11 +136,23 @@ export default function App() {
     if (remaining.length === 0) setView({ name: 'paste' })
   }
 
+  if (authed === null) {
+    return (
+      <main>
+        <p className="muted">Loading…</p>
+      </main>
+    )
+  }
+
+  if (!authed) {
+    return <Login onSuccess={() => setAuthed(true)} />
+  }
+
   if (loadError) {
     return (
       <main>
         <h1>Song Transcription</h1>
-        <p className="error">Couldn't load songs: {loadError}</p>
+        <p className="error">Couldn't load: {loadError}</p>
         <p className="muted">Is the backend running?</p>
       </main>
     )
@@ -145,6 +187,7 @@ export default function App() {
         settings={settings}
         onChange={handleSettingsChange}
         onBack={() => setView({ name: 'library' })}
+        onLogout={handleLogout}
       />
     )
   }

@@ -5,9 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 
 from ..db import get_session
+from ..deps import require_auth
 from ..models import Song, SongPayload, SongRead
 
-router = APIRouter(prefix="/api/songs", tags=["songs"])
+router = APIRouter(
+    prefix="/api/songs",
+    tags=["songs"],
+    dependencies=[Depends(require_auth)],
+)
 
 
 def _now_ms() -> int:
