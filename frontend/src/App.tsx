@@ -3,6 +3,12 @@ import './App.css'
 import { Library } from './Library'
 import { Paste } from './Paste'
 import { Practice } from './Practice'
+import { SettingsView } from './SettingsView'
+import {
+  getSettings,
+  saveSettings,
+  type Settings,
+} from './settings'
 import { completeLogin } from './spotify-auth'
 import {
   deleteSong,
@@ -16,14 +22,20 @@ type View =
   | { name: 'library' }
   | { name: 'paste'; editingId?: string }
   | { name: 'practice'; songId: string }
+  | { name: 'settings' }
 
 export default function App() {
   const [songs, setSongs] = useState<Song[]>(() => listSongs())
   const [view, setView] = useState<View>(() =>
     listSongs().length === 0 ? { name: 'paste' } : { name: 'library' },
   )
+  const [settings, setSettings] = useState<Settings>(() => getSettings())
   const [authError, setAuthError] = useState<string | null>(null)
   const callbackHandled = useRef(false)
+
+  function handleSettingsChange(patch: Partial<Settings>) {
+    setSettings(saveSettings(patch))
+  }
 
   // Handle the /callback landing after Spotify OAuth.
   // Guarded against React StrictMode's double-effect in dev — an OAuth code
@@ -73,6 +85,17 @@ export default function App() {
         onEdit={(id) => setView({ name: 'paste', editingId: id })}
         onDelete={handleDelete}
         onNew={() => setView({ name: 'paste' })}
+        onOpenSettings={() => setView({ name: 'settings' })}
+      />
+    )
+  }
+
+  if (view.name === 'settings') {
+    return (
+      <SettingsView
+        settings={settings}
+        onChange={handleSettingsChange}
+        onBack={() => setView({ name: 'library' })}
       />
     )
   }
@@ -97,6 +120,7 @@ export default function App() {
   return (
     <Practice
       song={song}
+      settings={settings}
       onBack={() => setView({ name: 'library' })}
       onEdit={() => setView({ name: 'paste', editingId: song.id })}
     />

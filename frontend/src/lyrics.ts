@@ -41,10 +41,26 @@ export function normalize(value: string): string {
     .trim()
 }
 
-export function statusOf(answer: string, target: string): Status {
-  const a = normalize(answer)
+// Case-insensitive but diacritic-preserving: for strict-accent mode, `canción`
+// and `Canción` still match, but `cancion` does not.
+function normalizeStrict(value: string): string {
+  return value.normalize('NFC').toLowerCase().trim()
+}
+
+export type StatusOptions = {
+  // When true, accent marks must match exactly for a word to count as correct.
+  requireAccents?: boolean
+}
+
+export function statusOf(
+  answer: string,
+  target: string,
+  opts?: StatusOptions,
+): Status {
+  const norm = opts?.requireAccents ? normalizeStrict : normalize
+  const a = norm(answer)
   if (!a) return 'empty'
-  const t = normalize(target)
+  const t = norm(target)
   if (a === t) return 'correct'
   if (t.startsWith(a)) return 'typing'
   return 'wrong'

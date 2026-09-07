@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
 import { statusOf, tokenize } from './lyrics'
+import type { Settings } from './settings'
 import { subscribeToState } from './spotify-player'
 import { clearProgress, getProgress, saveProgress, type Song } from './storage'
 
 type Props = {
   song: Song
+  settings: Settings
   onBack: () => void
   onEdit: () => void
 }
 
-export function Practice({ song, onBack, onEdit }: Props) {
+export function Practice({ song, settings, onBack, onEdit }: Props) {
   const initial = useMemo(() => getProgress(song.id), [song.id])
   const [answers, setAnswers] = useState<Record<number, string>>(
     initial?.answers ?? {},
@@ -87,9 +89,10 @@ export function Practice({ song, onBack, onEdit }: Props) {
       const next = new Set<number>()
       for (const token of tokens) {
         if (token.kind !== 'word') continue
-        if (statusOf(answers[token.index] ?? '', token.text) === 'correct') {
-          continue
-        }
+        const s = statusOf(answers[token.index] ?? '', token.text, {
+          requireAccents: settings.requireAccents,
+        })
+        if (s === 'correct') continue
         next.add(token.index)
       }
       return next
@@ -131,7 +134,9 @@ export function Practice({ song, onBack, onEdit }: Props) {
             )
           }
           const answer = answers[token.index] ?? ''
-          const status = statusOf(answer, token.text)
+          const status = statusOf(answer, token.text, {
+            requireAccents: settings.requireAccents,
+          })
           const isRevealed = revealed.has(token.index)
           const stateClass = isRevealed ? 'revealed' : status
           const isFocused = focusedIndex === token.index
