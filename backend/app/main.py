@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from .db import init_db
-from .routers import progress, songs
+from .routers import progress, settings, songs
 
 
 @asynccontextmanager
@@ -16,6 +16,7 @@ app = FastAPI(title="Song Transcription", lifespan=lifespan)
 
 app.include_router(songs.router)
 app.include_router(progress.router)
+app.include_router(settings.router)
 
 
 @app.get("/api/health")

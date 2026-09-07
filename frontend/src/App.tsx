@@ -5,7 +5,9 @@ import { Paste } from './Paste'
 import { Practice } from './Practice'
 import { SettingsView } from './SettingsView'
 import {
+  DEFAULTS as SETTINGS_DEFAULTS,
   getSettings,
+  migrateLegacySettingsIfNeeded,
   saveSettings,
   type Settings,
 } from './settings'
@@ -29,13 +31,20 @@ export default function App() {
   // null = still loading from the backend. Everything downstream waits.
   const [songs, setSongs] = useState<Song[] | null>(null)
   const [view, setView] = useState<View>({ name: 'library' })
-  const [settings, setSettings] = useState<Settings>(() => getSettings())
+  const [settings, setSettings] = useState<Settings | null>(null)
   const [authError, setAuthError] = useState<string | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
   const callbackHandled = useRef(false)
 
-  function handleSettingsChange(patch: Partial<Settings>) {
-    setSettings(saveSettings(patch))
+  async function handleSettingsChange(patch: Partial<Settings>) {
+    // Optimistic: reflect the change immediately, then reconcile with server.
+    setSettings((cur) => ({ ...(cur ?? SETTINGS_DEFAULTS), ...patch }))
+    try {
+      const next = await saveSettings(patch)
+      setSettings(next)
+    } catch (err) {
+      console.warn('Failed to save settings', err)
+    }
   }
 
   // Handle the /callback landing after Spotify OAuth.
@@ -57,13 +66,18 @@ export default function App() {
     let cancelled = false
     ;(async () => {
       try {
+        await migrateLegacySettingsIfNeeded()
         await migrateLegacySongsIfNeeded()
         await migrateLegacyProgressIfNeeded()
-        const initial = await listSongs()
+        const [initialSongs, initialSettings] = await Promise.all([
+          listSongs(),
+          getSettings(),
+        ])
         if (cancelled) return
-        setSongs(initial)
+        setSongs(initialSongs)
+        setSettings(initialSettings)
         // First-run: no songs → jump straight to paste, like before.
-        if (initial.length === 0) setView({ name: 'paste' })
+        if (initialSongs.length === 0) setView({ name: 'paste' })
       } catch (err: unknown) {
         if (!cancelled) setLoadError(String(err))
       }
@@ -102,7 +116,7 @@ export default function App() {
     )
   }
 
-  if (songs === null) {
+  if (songs === null || settings === null) {
     return (
       <main>
         <p className="muted">Loading…</p>

@@ -84,3 +84,33 @@ class ProgressPayload(ProgressBase):
 
 class ProgressRead(ProgressBase):
     updated_at: int
+
+
+# --- Settings ---
+# Single-row table; the row is created on first write. GETs return defaults
+# before then, so the frontend never has to special-case "no settings yet".
+
+
+class SettingsBase(SQLModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    require_accents: bool = False
+    rewind_on_resume_seconds: int = 2
+
+
+class AppSettings(SettingsBase, table=True):
+    __tablename__ = "app_settings"
+    id: int = Field(default=1, primary_key=True)
+
+
+class SettingsPatch(SQLModel):
+    """PATCH body: every field optional so callers only send what they change."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    require_accents: bool | None = None
+    rewind_on_resume_seconds: int | None = None
+
+
+class SettingsRead(SettingsBase):
+    pass

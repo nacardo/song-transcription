@@ -3,29 +3,60 @@ export type Settings = {
   rewindOnResumeSeconds: number
 }
 
-// Defaults are the shipping behavior — new fields added here will start
-// applying to existing users on next load without needing a migration.
+// Defaults mirror the backend defaults; used until the initial fetch lands
+// and as a fallback if the backend is unreachable.
 export const DEFAULTS: Settings = {
   requireAccents: false,
   rewindOnResumeSeconds: 2,
 }
 
-const KEY = 'song-transcription:settings'
+const API = '/api/settings'
 
-export function getSettings(): Settings {
-  try {
-    const raw = localStorage.getItem(KEY)
-    if (!raw) return { ...DEFAULTS }
-    const parsed = JSON.parse(raw)
-    if (!parsed || typeof parsed !== 'object') return { ...DEFAULTS }
-    return { ...DEFAULTS, ...(parsed as Partial<Settings>) }
-  } catch {
-    return { ...DEFAULTS }
-  }
+export async function getSettings(): Promise<Settings> {
+  const res = await fetch(API, { credentials: 'include' })
+  if (!res.ok) throw new Error(`GET ${API} failed: ${res.status}`)
+  return (await res.json()) as Settings
 }
 
-export function saveSettings(patch: Partial<Settings>): Settings {
-  const next = { ...getSettings(), ...patch }
-  localStorage.setItem(KEY, JSON.stringify(next))
-  return next
+export async function saveSettings(
+  patch: Partial<Settings>,
+): Promise<Settings> {
+  const res = await fetch(API, {
+    method: 'PATCH',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(patch),
+  })
+  if (!res.ok) throw new Error(`PATCH ${API} failed: ${res.status}`)
+  return (await res.json()) as Settings
+}
+
+// One-shot migration for the localStorage settings blob.
+const LEGACY_KEY = 'song-transcription:settings'
+const MIGRATION_FLAG = 'song-transcription:migrated:settings-v1'
+
+export async function migrateLegacySettingsIfNeeded(): Promise<void> {
+  if (localStorage.getItem(MIGRATION_FLAG)) return
+  const raw = localStorage.getItem(LEGACY_KEY)
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw)
+      if (parsed && typeof parsed === 'object') {
+        // Send only known fields; unknown keys the old client wrote get dropped.
+        const patch: Partial<Settings> = {}
+        if (typeof parsed.requireAccents === 'boolean') {
+          patch.requireAccents = parsed.requireAccents
+        }
+        if (typeof parsed.rewindOnResumeSeconds === 'number') {
+          patch.rewindOnResumeSeconds = parsed.rewindOnResumeSeconds
+        }
+        if (Object.keys(patch).length > 0) {
+          await saveSettings(patch)
+        }
+      }
+    } catch {
+      /* corrupt legacy data — just skip */
+    }
+  }
+  localStorage.setItem(MIGRATION_FLAG, '1')
 }
