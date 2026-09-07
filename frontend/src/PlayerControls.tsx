@@ -27,6 +27,10 @@ type Props = {
 // tiny offsets are just noise from a false start.
 const RESUME_THRESHOLD_MS = 5000
 
+// When resuming from a pause, jump back this many seconds so the user
+// doesn't miss the word they were typing when they hit pause.
+const REWIND_ON_RESUME_S = 2
+
 function formatTime(ms: number): string {
   if (!isFinite(ms) || ms < 0) return '0:00'
   const total = Math.floor(ms / 1000)
@@ -130,8 +134,15 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           ? initialPositionMs
           : undefined
       await guard(() => playTrack(spotifyUri, resume))
-    } else {
+    } else if (isPlaying) {
+      // Pausing: just pause, no rewind.
       await guard(() => togglePlay())
+    } else {
+      // Resuming from pause: rewind a couple of seconds first.
+      await guard(async () => {
+        await seekBy(-REWIND_ON_RESUME_S)
+        await togglePlay()
+      })
     }
   }
 
