@@ -595,9 +595,32 @@ input.title.invalid {
 .lyrics {
   font-size: 1.05rem;
   line-height: 2.1;
-  white-space: pre-wrap;
   word-spacing: 0.15em;
   color: var(--text-h);
+}
+
+.lyric-line {
+  /* Block-level lines: each is its own click target for seek-to-timestamp.
+     Negative margin extends the hover background to the edges of the lyrics
+     column without indenting the text. */
+  padding: 0.05rem 0.35rem;
+  margin: 0 -0.35rem;
+  border-radius: 4px;
+  transition: background-color 0.12s;
+}
+
+.lyric-line.seekable {
+  cursor: pointer;
+}
+
+.lyric-line.seekable:hover {
+  background: var(--accent-bg);
+}
+
+/* Empty LRC lines still render as blocks; give them a minimum height so the
+   visual spacing between verses is preserved. */
+.lyric-line:empty {
+  min-height: 1em;
 }
 
 .word-slot {

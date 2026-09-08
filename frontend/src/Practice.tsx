@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
-import { statusOf, tokenizeLyrics } from './lyrics'
+import { statusOf, tokenizeLyrics, type Token } from './lyrics'
 import type { Settings } from './settings'
-import { subscribeToState } from './spotify-player'
+import { seekTo, subscribeToState } from './spotify-player'
 import {
   clearProgress,
   getProgress,
@@ -104,15 +104,32 @@ function PracticeReady({
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef(new Map<number, HTMLInputElement>())
 
-  // Prefer LRC-derived tokens when we have synced lyrics — Phase 3/4 use
-  // `lines[].startMs` for click-to-seek and current-line highlighting. Falls
-  // back to plain lyrics tokenization when no LRC is available.
+  // Prefer LRC-derived tokens when we have synced lyrics; `lines[].startMs`
+  // drives click-to-seek below. Falls back to plain-lyrics tokenization
+  // (with all-undefined startMs) when no LRC is available.
   const { tokens, lines } = useMemo(
     () => tokenizeLyrics({ lyrics: song.lyrics, syncedLyrics: song.syncedLyrics }),
     [song.lyrics, song.syncedLyrics],
   )
-  // Used-not-yet, silences the "unused var" lint until Phase 3 wires it up.
-  void lines
+  // Bucket tokens by lineIndex so we can render each line as its own
+  // clickable block. The `\n` gaps that separated inline lines are dropped
+  // here — block-level `.lyric-line` divs create the visual newline for us.
+  const linesForRender = useMemo(() => {
+    const groups = new Map<number, Token[]>()
+    for (const token of tokens) {
+      if (token.kind === 'gap' && token.text === '\n') continue
+      const arr = groups.get(token.lineIndex) ?? []
+      arr.push(token)
+      groups.set(token.lineIndex, arr)
+    }
+    return Array.from(groups.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([lineIndex, tokens]) => ({
+        lineIndex,
+        tokens,
+        startMs: lines[lineIndex]?.startMs,
+      }))
+  }, [tokens, lines])
 
   // Debounced save: clear pending write on each change, save 500 ms after the
   // last change. `void` because we don't await inside an effect.
@@ -194,6 +211,114 @@ function PracticeReady({
     })
   }
 
+  // Click-to-seek: users hit a dedicated ▶ button in each line's left margin
+  // rather than clicking the line background — the whole-line hover target
+  // was fiddly and easy to hit by accident when trying to focus a word.
+  function handleSeekClick(startMs: number) {
+    void seekTo(startMs)
+  }
+
+  // Render a single token — extracted so the per-line render stays legible.
+  // Kept as a closure so it can read the state above without threading a
+  // half-dozen props through a component boundary.
+  function renderToken(token: Token, keyIdx: number) {
+    if (token.kind === 'gap') {
+      return <span key={keyIdx}>{token.text}</span>
+    }
+    if (token.kind === 'header') {
+      return (
+        <h2 key={keyIdx} className="section">
+          {token.text}
+        </h2>
+      )
+    }
+    const answer = answers[token.index] ?? ''
+    const status = statusOf(answer, token.text, {
+      requireAccents: settings.requireAccents,
+    })
+    const isRevealed = revealed.has(token.index)
+    const stateClass = isRevealed ? 'revealed' : status
+    const isFocused = focusedIndex === token.index
+    // When the answer is correct, show the canonical form (with accents,
+    // capitalization, etc.) so the user sees the right spelling even if
+    // they typed the diacritic-free version.
+    const displayValue =
+      isRevealed || status === 'correct' ? token.text : answer
+    return (
+      <span key={keyIdx} className="word-slot">
+        <input
+          ref={(el) => {
+            if (el) inputRefs.current.set(token.index, el)
+            else inputRefs.current.delete(token.index)
+          }}
+          className={`word ${stateClass}`}
+          size={Math.max(token.text.length, 2)}
+          value={displayValue}
+          readOnly={isRevealed}
+          onChange={(e) =>
+            setAnswers((prev) => ({
+              ...prev,
+              [token.index]: e.target.value,
+            }))
+          }
+          onFocus={() => setFocusedIndex(token.index)}
+          onBlur={() =>
+            setFocusedIndex((cur) =>
+              cur === token.index ? null : cur,
+            )
+          }
+          onKeyDown={(e) => {
+            if (e.key === '?') {
+              e.preventDefault()
+              if (!isRevealed && status !== 'correct') {
+                revealWord(token.index)
+              }
+            } else if (e.key === ' ') {
+              e.preventDefault()
+              focusNextWord(token.index)
+            }
+          }}
+          aria-label={`Word ${token.index + 1}`}
+          autoCapitalize="off"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+        {isFocused &&
+          (isRevealed || status === 'correct' ? (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="lookup-hint"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() =>
+                window.open(
+                  wordReferenceUrl(token.text),
+                  '_blank',
+                  'noopener,noreferrer',
+                )
+              }
+              aria-label={`Look up "${token.text}" on WordReference`}
+              title={`Look up "${token.text}" on WordReference`}
+            >
+              📖
+            </button>
+          ) : (
+            <button
+              type="button"
+              tabIndex={-1}
+              className="reveal-hint"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => revealWord(token.index)}
+              aria-label={`Reveal word ${token.index + 1}`}
+              title="Reveal this word (?)"
+            >
+              ?
+            </button>
+          ))}
+      </span>
+    )
+  }
+
   function revealAll() {
     setRevealed(() => {
       const next = new Set<number>()
@@ -255,103 +380,41 @@ function PracticeReady({
       )}
 
       <div className="lyrics">
-        {tokens.map((token, i) => {
-          if (token.kind === 'gap') {
-            return <span key={i}>{token.text}</span>
-          }
-          if (token.kind === 'header') {
+        {linesForRender.map(({ lineIndex, tokens, startMs }) => {
+          // Section-header lines aren't timed and get no line wrapper — they
+          // render as standalone <h2>s to preserve today's block spacing.
+          if (tokens.length === 1 && tokens[0].kind === 'header') {
             return (
-              <h2 key={i} className="section">
-                {token.text}
+              <h2 key={lineIndex} className="section">
+                {tokens[0].text}
               </h2>
             )
           }
-          const answer = answers[token.index] ?? ''
-          const status = statusOf(answer, token.text, {
-            requireAccents: settings.requireAccents,
-          })
-          const isRevealed = revealed.has(token.index)
-          const stateClass = isRevealed ? 'revealed' : status
-          const isFocused = focusedIndex === token.index
-          // When the answer is correct, show the canonical form (with accents,
-          // capitalization, etc.) so the user sees the right spelling even if
-          // they typed the diacritic-free version. Note: correctness currently
-          // ignores diacritics — a future "strict accents" toggle would change
-          // statusOf(), and this display swap would still do the right thing.
-          const displayValue =
-            isRevealed || status === 'correct' ? token.text : answer
+          const seekable = startMs !== undefined
           return (
-            <span key={i} className="word-slot">
-              <input
-                ref={(el) => {
-                  if (el) inputRefs.current.set(token.index, el)
-                  else inputRefs.current.delete(token.index)
-                }}
-                className={`word ${stateClass}`}
-                size={Math.max(token.text.length, 2)}
-                value={displayValue}
-                readOnly={isRevealed}
-                onChange={(e) =>
-                  setAnswers((prev) => ({
-                    ...prev,
-                    [token.index]: e.target.value,
-                  }))
-                }
-                onFocus={() => setFocusedIndex(token.index)}
-                onBlur={() =>
-                  setFocusedIndex((cur) =>
-                    cur === token.index ? null : cur,
-                  )
-                }
-                onKeyDown={(e) => {
-                  if (e.key === '?') {
-                    e.preventDefault()
-                    if (!isRevealed && status !== 'correct') {
-                      revealWord(token.index)
-                    }
-                  } else if (e.key === ' ') {
-                    e.preventDefault()
-                    focusNextWord(token.index)
-                  }
-                }}
-                aria-label={`Word ${token.index + 1}`}
-                autoCapitalize="off"
-                autoCorrect="off"
-                spellCheck={false}
-              />
-              {isFocused &&
-                (isRevealed || status === 'correct' ? (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className="lookup-hint"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() =>
-                      window.open(
-                        wordReferenceUrl(token.text),
-                        '_blank',
-                        'noopener,noreferrer',
-                      )
-                    }
-                    aria-label={`Look up "${token.text}" on WordReference`}
-                    title={`Look up "${token.text}" on WordReference`}
-                  >
-                    📖
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    tabIndex={-1}
-                    className="reveal-hint"
-                    onMouseDown={(e) => e.preventDefault()}
-                    onClick={() => revealWord(token.index)}
-                    aria-label={`Reveal word ${token.index + 1}`}
-                    title="Reveal this word (?)"
-                  >
-                    ?
-                  </button>
-                ))}
-            </span>
+            <div
+              key={lineIndex}
+              className={`lyric-line${seekable ? ' seekable' : ''}`}
+            >
+              {seekable ? (
+                <button
+                  type="button"
+                  tabIndex={-1}
+                  className="lyric-seek"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => handleSeekClick(startMs!)}
+                  aria-label="Jump playback to this line"
+                  title="Jump playback to this line"
+                >
+                  ▶
+                </button>
+              ) : (
+                <span className="lyric-seek placeholder" aria-hidden="true" />
+              )}
+              <span className="lyric-line-text">
+                {tokens.map((token, i) => renderToken(token, i))}
+              </span>
+            </div>
           )
         })}
       </div>
