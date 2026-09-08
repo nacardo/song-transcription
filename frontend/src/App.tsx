@@ -107,8 +107,9 @@ export default function App() {
         if (cancelled) return
         setSongs(initialSongs)
         setSettings(initialSettings)
-        // First-run: no songs → jump straight to paste, like before.
-        if (initialSongs.length === 0) setView({ name: 'paste' })
+        // Always land on Library — even on first-run with no songs — so the
+        // user can connect Spotify from its header before adding a song
+        // (adding-a-song's autofill flow needs Spotify to be authed).
       } catch (err: unknown) {
         if (!cancelled) setLoadError(String(err))
       }
@@ -184,7 +185,6 @@ export default function App() {
     await deleteSong(id)
     const remaining = await listSongs()
     setSongs(remaining)
-    if (remaining.length === 0) setView({ name: 'paste' })
   }
 
   if (authed === null) {
@@ -250,7 +250,7 @@ export default function App() {
     return (
       <Paste
         initial={initial}
-        canCancel={songs.length > 0}
+        canCancel
         onSave={handleSave}
         onCancel={() => setView({ name: 'library' })}
       />

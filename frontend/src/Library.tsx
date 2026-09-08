@@ -66,6 +66,13 @@ export function Library({
         </div>
       )}
 
+      {songs.length === 0 && (
+        <p className="muted library-empty">
+          No songs yet. Connect Spotify above, then hit <em>+ New song</em> to
+          add your first one.
+        </p>
+      )}
+
       <ul className="song-list">
         {songs.map((song) => (
           <li key={song.id} className="song-row">
