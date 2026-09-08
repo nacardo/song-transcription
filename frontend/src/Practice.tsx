@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
-import { statusOf, tokenize } from './lyrics'
+import { statusOf, tokenizeLyrics } from './lyrics'
 import type { Settings } from './settings'
 import { subscribeToState } from './spotify-player'
 import {
@@ -104,7 +104,15 @@ function PracticeReady({
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef(new Map<number, HTMLInputElement>())
 
-  const tokens = useMemo(() => tokenize(song.lyrics), [song.lyrics])
+  // Prefer LRC-derived tokens when we have synced lyrics — Phase 3/4 use
+  // `lines[].startMs` for click-to-seek and current-line highlighting. Falls
+  // back to plain lyrics tokenization when no LRC is available.
+  const { tokens, lines } = useMemo(
+    () => tokenizeLyrics({ lyrics: song.lyrics, syncedLyrics: song.syncedLyrics }),
+    [song.lyrics, song.syncedLyrics],
+  )
+  // Used-not-yet, silences the "unused var" lint until Phase 3 wires it up.
+  void lines
 
   // Debounced save: clear pending write on each change, save 500 ms after the
   // last change. `void` because we don't await inside an effect.

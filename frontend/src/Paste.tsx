@@ -129,13 +129,18 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
           plain: lrcToPlain(result.syncedLyrics),
           synced: result.syncedLyrics,
         })
-        setSyncedLyrics(result.syncedLyrics)
-        setLyricsSource(result.source)
-        // Auto-fill the lyrics textarea only if it's empty — otherwise the
-        // user has their own text and we let them keep it (with a button to
-        // swap it out).
+        // Only persist the LRC when we're also applying its plain form to
+        // the visible lyrics — otherwise the two would diverge and the
+        // Practice renderer (which prefers syncedLyrics) would show text the
+        // user never saw here. When the user already has lyrics, they get
+        // the "Replace with fetched lyrics" button to opt in.
         if (!userEditedLyrics.current && !lyrics.trim()) {
           setLyrics(lrcToPlain(result.syncedLyrics))
+          setSyncedLyrics(result.syncedLyrics)
+          setLyricsSource(result.source)
+        } else {
+          setSyncedLyrics('')
+          setLyricsSource('')
         }
       } catch (err: unknown) {
         if (!cancelled) {
@@ -157,6 +162,8 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   function replaceLyricsWithLookup() {
     if (lookup.state !== 'found') return
     setLyrics(lookup.plain)
+    setSyncedLyrics(lookup.synced)
+    setLyricsSource(lookup.source)
     userEditedLyrics.current = false
   }
 
