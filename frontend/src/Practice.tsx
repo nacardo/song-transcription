@@ -208,8 +208,25 @@ function PracticeReady({
           ← Library
         </button>
         <div className="song-header-title">
-          <h1>{song.title}</h1>
-          {song.artist && <div className="song-header-artist">{song.artist}</div>}
+          {song.albumArtUrl && (
+            <img
+              className="song-header-cover"
+              src={song.albumArtUrl}
+              alt=""
+              aria-hidden="true"
+            />
+          )}
+          <div className="song-header-text">
+            <h1>{song.title}</h1>
+            {song.artist && (
+              <div className="song-header-artist">{song.artist}</div>
+            )}
+          </div>
+          {/* Invisible spacer that mirrors the cover so the text stays
+              centered where it sat before the art was added. */}
+          {song.albumArtUrl && (
+            <span className="song-header-cover-spacer" aria-hidden="true" />
+          )}
         </div>
         <button type="button" className="link" onClick={onEdit}>
           Edit

@@ -257,17 +257,45 @@ button.icon-btn {
 
 .song-header-title {
   flex: 1;
-  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.song-header-cover,
+.song-header-cover-spacer {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+}
+
+.song-header-cover {
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.song-header-text {
+  min-width: 0;
+  text-align: left;
 }
 
 .song-header-title h1 {
   margin: 0;
+  /* Long titles shouldn't push the Edit button off-screen on narrow layouts. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .song-header-artist {
   font-size: 0.9rem;
   color: var(--text);
   margin-top: 0.15rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .field-row {
