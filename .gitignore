@@ -13,3 +13,6 @@ __pycache__/
 
 # Backend data (SQLite lives here)
 backend/data/
+
+# Docker-compose SQLite volume (mounted at repo root by docker-compose.yml)
+/data/

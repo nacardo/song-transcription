@@ -1,0 +1,36 @@
+# Keep image builds fast + small. Anything not needed at build or runtime.
+.git/
+.gitignore
+.dockerignore
+.claude/
+.env
+.env.*
+!.env.example
+
+# Node / Bun
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Python
+backend/.venv/
+backend/__pycache__/
+**/__pycache__/
+**/*.py[cod]
+backend/.pytest_cache/
+backend/.mypy_cache/
+backend/.ruff_cache/
+
+# Backend test-only bits — the runtime doesn't need them.
+backend/tests/
+
+# Local SQLite / data
+backend/data/
+data/
+
+# Editor / OS junk
+.DS_Store
+.vscode/
+.idea/
+*.log
+*.swp

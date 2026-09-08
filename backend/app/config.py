@@ -32,6 +32,12 @@ class Settings(BaseSettings):
     # over http://127.0.0.1:5173 during development.
     session_https_only: bool = False
 
+    # Directory holding the built frontend (index.html, assets/, …). Empty
+    # means dev mode: Vite serves the frontend on :5173 and FastAPI serves
+    # only the API. In prod the Dockerfile sets this to /app/static and the
+    # SPA fallback route below hands unknown paths to index.html.
+    static_dir: str = ""
+
 
 settings = Settings()
 

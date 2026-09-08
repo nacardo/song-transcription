@@ -1,0 +1,25 @@
+# Local smoke test for the built container. Not the production deploy config
+# — that's Unraid + a Cloudflare Tunnel container (see backend-buildout-status
+# memory, Phase G).
+#
+# Usage:
+#   1. Copy .env.example -> .env, fill in APP_PASSWORD and SESSION_SECRET.
+#   2. docker compose up --build
+#   3. Open http://localhost:8000 and log in with your APP_PASSWORD.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # Baked into the JS bundle at build time — must be present when the
+        # image is built, not at container start. Pulled from your .env.
+        VITE_SPOTIFY_CLIENT_ID: ${VITE_SPOTIFY_CLIENT_ID}
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      # SQLite lives here; survives container rebuilds.
+      - ./data:/data
+    restart: unless-stopped
