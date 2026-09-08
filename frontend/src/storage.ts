@@ -4,6 +4,9 @@ export type Song = {
   artist: string
   lyrics: string
   spotifyUri: string
+  // Cached from Spotify after save. Empty when we haven't looked it up yet
+  // or the song has no spotifyUri.
+  albumArtUrl: string
   createdAt: number
   updatedAt: number
 }
@@ -38,20 +41,26 @@ export async function saveSong(input: {
   artist: string
   lyrics: string
   spotifyUri: string
+  // Optional so callers that don't care (Paste form) don't need to think
+  // about it. When omitted on an update the server keeps whatever's there;
+  // when omitted on a create the server defaults it to "".
+  albumArtUrl?: string
 }): Promise<Song> {
-  const body = JSON.stringify({
+  const body: Record<string, unknown> = {
     title: input.title,
     artist: input.artist,
     lyrics: input.lyrics,
     spotifyUri: input.spotifyUri,
-  })
+  }
+  if (input.albumArtUrl !== undefined) body.albumArtUrl = input.albumArtUrl
+  const serialized = JSON.stringify(body)
   if (input.id) {
     return apiJson<Song>(`${SONGS_API}/${input.id}`, {
       method: 'PUT',
-      body,
+      body: serialized,
     })
   }
-  return apiJson<Song>(SONGS_API, { method: 'POST', body })
+  return apiJson<Song>(SONGS_API, { method: 'POST', body: serialized })
 }
 
 export async function deleteSong(id: string): Promise<void> {

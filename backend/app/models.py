@@ -23,6 +23,10 @@ class SongBase(SQLModel):
     artist: str = ""
     lyrics: str
     spotify_uri: str = ""
+    # Cached album cover URL from Spotify's CDN (i.scdn.co). Populated by the
+    # frontend after save using the user's Spotify token, so the backend
+    # doesn't need Spotify credentials of its own.
+    album_art_url: str = ""
 
 
 class Song(SongBase, table=True):

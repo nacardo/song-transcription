@@ -74,10 +74,21 @@ export function Library({
               className="song-open"
               onClick={() => onOpen(song.id)}
             >
+              {song.albumArtUrl ? (
+                <img
+                  className="song-cover"
+                  src={song.albumArtUrl}
+                  alt=""
+                  loading="lazy"
+                  aria-hidden="true"
+                />
+              ) : (
+                <span className="song-cover placeholder" aria-hidden="true" />
+              )}
               <span className="song-open-main">
                 <span className="song-title">
                   {song.title}
-                  {song.spotifyUri && (
+                  {song.spotifyUri && !song.albumArtUrl && (
                     <span
                       className="spotify-dot"
                       title="Has Spotify track"

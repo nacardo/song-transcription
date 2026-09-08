@@ -293,6 +293,7 @@ button.icon-btn {
   flex-direction: column;
   gap: 0.15rem;
   min-width: 0;
+  flex: 1;
 }
 
 .song-artist {
@@ -317,16 +318,34 @@ button.icon-btn {
 .song-open {
   flex: 1;
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.85rem;
   text-align: left;
   border: none;
   background: transparent;
-  padding: 0.9rem 0.5rem;
+  padding: 0.7rem 0.5rem;
   margin: 0;
   border-radius: 0;
   color: var(--text-h);
+}
+
+.song-cover {
+  width: 44px;
+  height: 44px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--border);
+}
+
+.song-cover.placeholder {
+  /* Reserve the same slot so titles line up whether or not art is present. */
+  background: transparent;
+}
+
+.song-open .song-meta {
+  flex-shrink: 0;
 }
 
 .song-open:hover {

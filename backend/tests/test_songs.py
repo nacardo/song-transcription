@@ -97,7 +97,7 @@ def test_delete_missing_is_ok(client: TestClient) -> None:
 
 
 def test_defaults_populated(client: TestClient) -> None:
-    """artist and spotifyUri are optional; omitting them yields empty strings."""
+    """artist, spotifyUri and albumArtUrl are optional; omitting them yields empty strings."""
     res = client.post(
         "/api/songs",
         json={"title": "T", "lyrics": "L"},
@@ -106,6 +106,20 @@ def test_defaults_populated(client: TestClient) -> None:
     body = res.json()
     assert body["artist"] == ""
     assert body["spotifyUri"] == ""
+    assert body["albumArtUrl"] == ""
+
+
+def test_album_art_url_round_trips(client: TestClient) -> None:
+    """The frontend enrichment path PUTs the fetched cover URL back; make sure
+    the field is accepted, stored, and echoed."""
+    art = "https://i.scdn.co/image/ab67616d0000b273abcdef"
+    created = client.post(
+        "/api/songs",
+        json=_payload(albumArtUrl=art),
+    ).json()
+    assert created["albumArtUrl"] == art
+    fetched = client.get(f"/api/songs/{created['id']}").json()
+    assert fetched["albumArtUrl"] == art
 
 
 def test_list_ordered_by_updated_desc(client: TestClient) -> None:

@@ -180,6 +180,38 @@ export async function getValidAccessToken(): Promise<string> {
   return t.accessToken
 }
 
+// Best-effort fetch of a track's album cover URL. Returns null on any failure
+// (no auth, network error, unknown track) — this is enrichment, not a hard
+// requirement, so the caller just skips the update when we can't.
+//
+// Spotify returns images sorted largest→smallest at ~640/300/64. We pick the
+// smallest one that's at least 200 wide so the library thumbnail is crisp on
+// hi-DPI screens without downloading a needlessly huge cover.
+export async function fetchAlbumArtUrl(trackId: string): Promise<string | null> {
+  if (!isAuthenticated()) return null
+  try {
+    const token = await getValidAccessToken()
+    const res = await fetch(`https://api.spotify.com/v1/tracks/${trackId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    })
+    if (!res.ok) return null
+    const data = (await res.json()) as {
+      album?: { images?: Array<{ url: string; width: number; height: number }> }
+    }
+    const images = data.album?.images ?? []
+    if (images.length === 0) return null
+    // Images are sorted largest first; walk from the end for the smallest
+    // that still meets our floor.
+    const MIN_WIDTH = 200
+    for (let i = images.length - 1; i >= 0; i--) {
+      if (images[i].width >= MIN_WIDTH) return images[i].url
+    }
+    return images[0].url
+  } catch {
+    return null
+  }
+}
+
 export async function fetchProfile(): Promise<SpotifyProfile> {
   const token = await getValidAccessToken()
   const res = await fetch('https://api.spotify.com/v1/me', {

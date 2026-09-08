@@ -38,6 +38,33 @@ def init_db() -> None:
     from . import models  # noqa: F401
 
     SQLModel.metadata.create_all(engine)
+    if settings.database_url.startswith("sqlite"):
+        _apply_sqlite_column_additions(engine)
+
+
+def _apply_sqlite_column_additions(engine: Engine) -> None:
+    """Tiny in-place migration: add columns that create_all() won't add to an
+    existing table. Alembic is overkill for this project's single-user scale;
+    when the shape of a change stops fitting this pattern we'll graduate.
+
+    Every entry is idempotent — SQLite's PRAGMA tells us which columns exist,
+    so we only issue ALTER for the missing ones."""
+    from sqlalchemy import text
+
+    additions: list[tuple[str, str, str]] = [
+        # (table, column, "SQL type + constraints")
+        ("song", "album_art_url", "TEXT NOT NULL DEFAULT ''"),
+    ]
+    with engine.begin() as conn:
+        for table, column, decl in additions:
+            existing = {
+                row[1] for row in conn.exec_driver_sql(f'PRAGMA table_info("{table}")')
+            }
+            if column in existing:
+                continue
+            conn.exec_driver_sql(
+                f'ALTER TABLE "{table}" ADD COLUMN "{column}" {decl}'
+            )
 
 
 def get_session() -> Generator[Session, None, None]:

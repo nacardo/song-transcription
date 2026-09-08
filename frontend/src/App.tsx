@@ -13,7 +13,8 @@ import {
   saveSettings,
   type Settings,
 } from './settings'
-import { completeLogin } from './spotify-auth'
+import { completeLogin, fetchAlbumArtUrl } from './spotify-auth'
+import { trackIdFromUri } from './spotify'
 import {
   deleteSong,
   listSongs,
@@ -124,9 +125,53 @@ export default function App() {
     spotifyUri: string
   }) {
     const editingId = view.name === 'paste' ? view.editingId : undefined
-    const saved = await saveSong({ id: editingId, ...fields })
+    const existing = editingId
+      ? songs?.find((s) => s.id === editingId)
+      : undefined
+    // Preserve the cached cover across an edit as long as the track didn't
+    // change. If the user swapped the Spotify link (or cleared it), drop the
+    // stale art — enrichment below will refill when appropriate.
+    const preservedArt =
+      existing && existing.spotifyUri === fields.spotifyUri
+        ? existing.albumArtUrl
+        : ''
+    const saved = await saveSong({
+      id: editingId,
+      ...fields,
+      albumArtUrl: preservedArt,
+    })
     setSongs(await listSongs())
     setView({ name: 'practice', songId: saved.id })
+    // Fire-and-forget: fetch album art if we have a track but no cached
+    // cover yet. Requires Spotify auth; silently no-ops otherwise.
+    if (saved.spotifyUri && !saved.albumArtUrl) {
+      void enrichAlbumArt(saved).then((updated) => {
+        if (!updated) return
+        setSongs((prev) =>
+          prev ? prev.map((s) => (s.id === updated.id ? updated : s)) : prev,
+        )
+      })
+    }
+  }
+
+  async function enrichAlbumArt(song: Song): Promise<Song | null> {
+    const trackId = trackIdFromUri(song.spotifyUri)
+    if (!trackId) return null
+    const url = await fetchAlbumArtUrl(trackId)
+    if (!url) return null
+    try {
+      return await saveSong({
+        id: song.id,
+        title: song.title,
+        artist: song.artist,
+        lyrics: song.lyrics,
+        spotifyUri: song.spotifyUri,
+        albumArtUrl: url,
+      })
+    } catch (err) {
+      console.warn('Failed to persist album art', err)
+      return null
+    }
   }
 
   async function handleDelete(id: string) {
