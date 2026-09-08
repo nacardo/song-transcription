@@ -122,6 +122,17 @@ def test_album_art_url_round_trips(client: TestClient) -> None:
     assert fetched["albumArtUrl"] == art
 
 
+def test_synced_lyrics_round_trip(client: TestClient) -> None:
+    """Synced lyrics + source travel across the API unchanged."""
+    synced = "[00:12.34]Casa azul\n[00:15.87]Dopamina"
+    created = client.post(
+        "/api/songs",
+        json=_payload(syncedLyrics=synced, lyricsSource="lrclib"),
+    ).json()
+    assert created["syncedLyrics"] == synced
+    assert created["lyricsSource"] == "lrclib"
+
+
 def test_list_ordered_by_updated_desc(client: TestClient) -> None:
     client.put("/api/songs/a", json=_payload(title="A", updatedAt=1000))
     client.put("/api/songs/b", json=_payload(title="B", updatedAt=3000))

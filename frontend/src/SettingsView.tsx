@@ -50,6 +50,20 @@ export function SettingsView({ settings, onChange, onBack, onLogout }: Props) {
           Log out
         </button>
       </div>
+
+      <footer className="settings-footer">
+        <p>
+          Synchronized lyrics provided by{' '}
+          <a
+            href="https://lrclib.net"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            lrclib.net
+          </a>
+          .
+        </p>
+      </footer>
     </main>
   )
 }

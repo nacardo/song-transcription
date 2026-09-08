@@ -27,6 +27,14 @@ class SongBase(SQLModel):
     # frontend after save using the user's Spotify token, so the backend
     # doesn't need Spotify credentials of its own.
     album_art_url: str = ""
+    # Synchronized lyrics in raw LRC format when available (from lrclib.net).
+    # Empty string means "we haven't found timed lyrics for this song";
+    # rendering falls back to the plain `lyrics` field.
+    synced_lyrics: str = ""
+    # Where `synced_lyrics` came from: currently "lrclib" or "" if manually
+    # entered / not sourced externally. Lets us show attribution and, later,
+    # re-fetch when we add other providers.
+    lyrics_source: str = ""
 
 
 class Song(SongBase, table=True):

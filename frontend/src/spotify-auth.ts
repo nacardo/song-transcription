@@ -180,14 +180,24 @@ export async function getValidAccessToken(): Promise<string> {
   return t.accessToken
 }
 
-// Best-effort fetch of a track's album cover URL. Returns null on any failure
-// (no auth, network error, unknown track) — this is enrichment, not a hard
-// requirement, so the caller just skips the update when we can't.
+export type SpotifyTrackMeta = {
+  name: string
+  artistName: string
+  albumName: string
+  durationMs: number
+  albumArtUrl: string
+}
+
+// Best-effort fetch of a track's metadata: title, primary artist, album,
+// duration, and album cover URL. Returns null on any failure (no auth,
+// network error, unknown track) — callers should degrade gracefully.
 //
 // Spotify returns images sorted largest→smallest at ~640/300/64. We pick the
 // smallest one that's at least 200 wide so the library thumbnail is crisp on
 // hi-DPI screens without downloading a needlessly huge cover.
-export async function fetchAlbumArtUrl(trackId: string): Promise<string | null> {
+export async function fetchTrackMeta(
+  trackId: string,
+): Promise<SpotifyTrackMeta | null> {
   if (!isAuthenticated()) return null
   try {
     const token = await getValidAccessToken()
@@ -196,20 +206,42 @@ export async function fetchAlbumArtUrl(trackId: string): Promise<string | null> 
     })
     if (!res.ok) return null
     const data = (await res.json()) as {
-      album?: { images?: Array<{ url: string; width: number; height: number }> }
+      name?: string
+      duration_ms?: number
+      artists?: Array<{ name: string }>
+      album?: {
+        name?: string
+        images?: Array<{ url: string; width: number; height: number }>
+      }
     }
     const images = data.album?.images ?? []
-    if (images.length === 0) return null
-    // Images are sorted largest first; walk from the end for the smallest
-    // that still meets our floor.
-    const MIN_WIDTH = 200
-    for (let i = images.length - 1; i >= 0; i--) {
-      if (images[i].width >= MIN_WIDTH) return images[i].url
+    let albumArtUrl = ''
+    if (images.length > 0) {
+      const MIN_WIDTH = 200
+      albumArtUrl = images[0].url
+      for (let i = images.length - 1; i >= 0; i--) {
+        if (images[i].width >= MIN_WIDTH) {
+          albumArtUrl = images[i].url
+          break
+        }
+      }
     }
-    return images[0].url
+    return {
+      name: data.name ?? '',
+      artistName: data.artists?.[0]?.name ?? '',
+      albumName: data.album?.name ?? '',
+      durationMs: data.duration_ms ?? 0,
+      albumArtUrl,
+    }
   } catch {
     return null
   }
+}
+
+// Back-compat convenience for the album-art enrichment path.
+export async function fetchAlbumArtUrl(trackId: string): Promise<string | null> {
+  const meta = await fetchTrackMeta(trackId)
+  return meta?.albumArtUrl || null
 }
 
 export async function fetchProfile(): Promise<SpotifyProfile> {

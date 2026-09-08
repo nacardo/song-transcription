@@ -7,6 +7,13 @@ export type Song = {
   // Cached from Spotify after save. Empty when we haven't looked it up yet
   // or the song has no spotifyUri.
   albumArtUrl: string
+  // Synchronized lyrics in raw LRC format when available. Empty means we
+  // don't have timed lyrics for this song and rendering falls back to the
+  // plain `lyrics` field.
+  syncedLyrics: string
+  // Where syncedLyrics came from ("lrclib" or ""). Drives the attribution
+  // shown in Settings.
+  lyricsSource: string
   createdAt: number
   updatedAt: number
 }
@@ -42,9 +49,13 @@ export async function saveSong(input: {
   lyrics: string
   spotifyUri: string
   // Optional so callers that don't care (Paste form) don't need to think
-  // about it. When omitted on an update the server keeps whatever's there;
-  // when omitted on a create the server defaults it to "".
+  // about them. When omitted the server uses SongBase defaults (empty
+  // strings); on updates that means the DB row will get wiped if the caller
+  // doesn't pass a value, so callers preserving prior values must include
+  // them explicitly.
   albumArtUrl?: string
+  syncedLyrics?: string
+  lyricsSource?: string
 }): Promise<Song> {
   const body: Record<string, unknown> = {
     title: input.title,
@@ -53,6 +64,8 @@ export async function saveSong(input: {
     spotifyUri: input.spotifyUri,
   }
   if (input.albumArtUrl !== undefined) body.albumArtUrl = input.albumArtUrl
+  if (input.syncedLyrics !== undefined) body.syncedLyrics = input.syncedLyrics
+  if (input.lyricsSource !== undefined) body.lyricsSource = input.lyricsSource
   const serialized = JSON.stringify(body)
   if (input.id) {
     return apiJson<Song>(`${SONGS_API}/${input.id}`, {

@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { extractTitle } from './lyrics'
-import { normalizeSpotifyUri } from './spotify'
+import { searchLyrics } from './lyrics-search'
+import { normalizeSpotifyUri, trackIdFromUri } from './spotify'
+import { fetchTrackMeta, isAuthenticated as spotifyReady } from './spotify-auth'
 import type { Song } from './storage'
 
 type Props = {
@@ -11,8 +13,29 @@ type Props = {
     artist: string
     lyrics: string
     spotifyUri: string
+    syncedLyrics: string
+    lyricsSource: string
   }) => void
   onCancel: () => void
+}
+
+type LyricsLookup =
+  | { state: 'idle' }
+  | { state: 'searching' }
+  | { state: 'found'; source: string; plain: string; synced: string }
+  | { state: 'not-found' }
+  | { state: 'no-auth' }
+  | { state: 'error'; message: string }
+
+// LRC → plain text: drop the [mm:ss.xx] prefixes so a user can practice
+// against readable lines. Preserves original line order and blank lines.
+function lrcToPlain(lrc: string): string {
+  return lrc
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^(?:\[[^\]]*\])+/g, '').trim())
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
@@ -21,6 +44,15 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   const [lyrics, setLyrics] = useState(initial?.lyrics ?? '')
   const [spotifyInput, setSpotifyInput] = useState(initial?.spotifyUri ?? '')
   const [titleTouched, setTitleTouched] = useState(!!initial)
+  // Synced-lyrics state: separate from the visible lyrics textarea because
+  // the user sees plain text; we ship the LRC-format string on save.
+  const [syncedLyrics, setSyncedLyrics] = useState(initial?.syncedLyrics ?? '')
+  const [lyricsSource, setLyricsSource] = useState(initial?.lyricsSource ?? '')
+  const [lookup, setLookup] = useState<LyricsLookup>({ state: 'idle' })
+  // Tracks whether the user has manually typed in the lyrics box. If they
+  // have, we don't overwrite their work — we offer a "Use lrclib lyrics"
+  // button instead.
+  const userEditedLyrics = useRef(!!initial?.lyrics)
 
   useEffect(() => {
     if (titleTouched) return
@@ -34,8 +66,89 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   )
   const spotifyInvalid = spotifyInput.trim().length > 0 && spotifyUri === null
 
+  // Fire the lyrics search whenever we have a valid Spotify URI. On edit of
+  // an existing song we skip if the URI hasn't changed from what we started
+  // with — the stored syncedLyrics are already good.
+  useEffect(() => {
+    if (!spotifyUri) {
+      setLookup({ state: 'idle' })
+      return
+    }
+    if (initial && initial.spotifyUri === spotifyUri && initial.syncedLyrics) {
+      // Already have lyrics for this exact track; no need to re-fetch.
+      setLookup({
+        state: 'found',
+        source: initial.lyricsSource || 'lrclib',
+        plain: lrcToPlain(initial.syncedLyrics),
+        synced: initial.syncedLyrics,
+      })
+      return
+    }
+    if (!spotifyReady()) {
+      setLookup({ state: 'no-auth' })
+      return
+    }
+    const trackId = trackIdFromUri(spotifyUri)
+    if (!trackId) return
+    let cancelled = false
+    setLookup({ state: 'searching' })
+    ;(async () => {
+      try {
+        const meta = await fetchTrackMeta(trackId)
+        if (cancelled) return
+        if (!meta) {
+          setLookup({ state: 'error', message: 'Spotify lookup failed' })
+          return
+        }
+        const result = await searchLyrics({
+          trackName: meta.name,
+          artistName: meta.artistName,
+          albumName: meta.albumName,
+          durationSec: Math.round(meta.durationMs / 1000) || undefined,
+        })
+        if (cancelled) return
+        if (!result || !result.syncedLyrics) {
+          setLookup({ state: 'not-found' })
+          setSyncedLyrics('')
+          setLyricsSource('')
+          return
+        }
+        setLookup({
+          state: 'found',
+          source: result.source,
+          plain: lrcToPlain(result.syncedLyrics),
+          synced: result.syncedLyrics,
+        })
+        setSyncedLyrics(result.syncedLyrics)
+        setLyricsSource(result.source)
+        // Auto-fill the lyrics textarea only if it's empty — otherwise the
+        // user has their own text and we let them keep it (with a button to
+        // swap it out).
+        if (!userEditedLyrics.current && !lyrics.trim()) {
+          setLyrics(lrcToPlain(result.syncedLyrics))
+        }
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setLookup({ state: 'error', message: String(err) })
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+    // Intentionally only re-run on spotifyUri changes; `lyrics` is read to
+    // decide whether to auto-fill but we don't want to re-search on typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotifyUri])
+
   const canSave =
     title.trim().length > 0 && lyrics.trim().length > 0 && !spotifyInvalid
+
+  function replaceLyricsWithLookup() {
+    if (lookup.state !== 'found') return
+    setLyrics(lookup.plain)
+    userEditedLyrics.current = false
+  }
 
   return (
     <main>
@@ -87,12 +200,27 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
         </div>
       )}
 
+      <LookupStatus
+        lookup={lookup}
+        hasLyrics={lyrics.trim().length > 0}
+        onUseLookup={replaceLyricsWithLookup}
+      />
+
       <label htmlFor="lyrics">Lyrics</label>
       <textarea
         id="lyrics"
         rows={16}
         value={lyrics}
-        onChange={(e) => setLyrics(e.target.value)}
+        onChange={(e) => {
+          setLyrics(e.target.value)
+          userEditedLyrics.current = true
+          // Any manual edit invalidates the previously-fetched synced text.
+          // A user who then wants sync back can re-paste the Spotify link.
+          if (syncedLyrics) {
+            setSyncedLyrics('')
+            setLyricsSource('')
+          }
+        }}
         placeholder="Paste lyrics here..."
         autoFocus={!initial}
       />
@@ -106,6 +234,8 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
               artist: artist.trim(),
               lyrics: lyrics.trim(),
               spotifyUri: spotifyUri ?? '',
+              syncedLyrics,
+              lyricsSource,
             })
           }
           disabled={!canSave}
@@ -119,5 +249,59 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
         )}
       </div>
     </main>
+  )
+}
+
+function LookupStatus({
+  lookup,
+  hasLyrics,
+  onUseLookup,
+}: {
+  lookup: LyricsLookup
+  hasLyrics: boolean
+  onUseLookup: () => void
+}) {
+  if (lookup.state === 'idle') return null
+  if (lookup.state === 'searching') {
+    return <div className="field-hint">Searching lrclib.net for synced lyrics…</div>
+  }
+  if (lookup.state === 'no-auth') {
+    return (
+      <div className="field-hint">
+        Connect Spotify (top-right on the library) to auto-fetch synced lyrics.
+      </div>
+    )
+  }
+  if (lookup.state === 'not-found') {
+    return (
+      <div className="field-hint">
+        No synced lyrics found — paste the lyrics below.
+      </div>
+    )
+  }
+  if (lookup.state === 'error') {
+    return (
+      <div className="field-hint error">
+        Lyrics lookup failed: {lookup.message}
+      </div>
+    )
+  }
+  // found
+  return (
+    <div className="field-hint">
+      ✓ Synced lyrics found via {lookup.source}.
+      {hasLyrics && (
+        <>
+          {' '}
+          <button
+            type="button"
+            className="link small"
+            onClick={onUseLookup}
+          >
+            Replace with fetched lyrics
+          </button>
+        </>
+      )}
+    </div>
   )
 }

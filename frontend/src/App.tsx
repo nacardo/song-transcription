@@ -123,6 +123,8 @@ export default function App() {
     artist: string
     lyrics: string
     spotifyUri: string
+    syncedLyrics: string
+    lyricsSource: string
   }) {
     const editingId = view.name === 'paste' ? view.editingId : undefined
     const existing = editingId
@@ -160,6 +162,8 @@ export default function App() {
     const url = await fetchAlbumArtUrl(trackId)
     if (!url) return null
     try {
+      // Include synced-lyrics fields so the PUT doesn't wipe them on the
+      // second save — SongPayload defaults them to "" when omitted.
       return await saveSong({
         id: song.id,
         title: song.title,
@@ -167,6 +171,8 @@ export default function App() {
         lyrics: song.lyrics,
         spotifyUri: song.spotifyUri,
         albumArtUrl: url,
+        syncedLyrics: song.syncedLyrics,
+        lyricsSource: song.lyricsSource,
       })
     } catch (err) {
       console.warn('Failed to persist album art', err)

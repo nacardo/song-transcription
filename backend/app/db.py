@@ -54,6 +54,8 @@ def _apply_sqlite_column_additions(engine: Engine) -> None:
     additions: list[tuple[str, str, str]] = [
         # (table, column, "SQL type + constraints")
         ("song", "album_art_url", "TEXT NOT NULL DEFAULT ''"),
+        ("song", "synced_lyrics", "TEXT NOT NULL DEFAULT ''"),
+        ("song", "lyrics_source", "TEXT NOT NULL DEFAULT ''"),
     ]
     with engine.begin() as conn:
         for table, column, decl in additions:
