@@ -43,22 +43,26 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   const [artist, setArtist] = useState(initial?.artist ?? '')
   const [lyrics, setLyrics] = useState(initial?.lyrics ?? '')
   const [spotifyInput, setSpotifyInput] = useState(initial?.spotifyUri ?? '')
-  const [titleTouched, setTitleTouched] = useState(!!initial)
   // Synced-lyrics state: separate from the visible lyrics textarea because
   // the user sees plain text; we ship the LRC-format string on save.
   const [syncedLyrics, setSyncedLyrics] = useState(initial?.syncedLyrics ?? '')
   const [lyricsSource, setLyricsSource] = useState(initial?.lyricsSource ?? '')
   const [lookup, setLookup] = useState<LyricsLookup>({ state: 'idle' })
-  // Tracks whether the user has manually typed in the lyrics box. If they
-  // have, we don't overwrite their work — we offer a "Use lrclib lyrics"
-  // button instead.
+  // Track whether the user has manually edited a field so auto-fill from
+  // Spotify/LRCLIB doesn't clobber their edits. Refs (not state) so the
+  // fetch effect doesn't re-fire on every keystroke.
+  const titleTouched = useRef(!!initial?.title)
+  const artistTouched = useRef(!!initial?.artist)
   const userEditedLyrics = useRef(!!initial?.lyrics)
 
+  // Fallback when there's no Spotify link: try to pull a title out of the
+  // pasted lyrics. Kept from the pre-Spotify workflow — only runs while the
+  // title is still untouched.
   useEffect(() => {
-    if (titleTouched) return
+    if (titleTouched.current) return
     const suggested = extractTitle(lyrics)
     if (suggested) setTitle(suggested)
-  }, [lyrics, titleTouched])
+  }, [lyrics])
 
   const spotifyUri = useMemo(
     () => normalizeSpotifyUri(spotifyInput),
@@ -66,9 +70,9 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
   )
   const spotifyInvalid = spotifyInput.trim().length > 0 && spotifyUri === null
 
-  // Fire the lyrics search whenever we have a valid Spotify URI. On edit of
-  // an existing song we skip if the URI hasn't changed from what we started
-  // with — the stored syncedLyrics are already good.
+  // Spotify-driven autofill: pastes name/artist from the track, then hits
+  // lrclib for synced lyrics. Runs whenever the URI changes to a new valid
+  // value; skipped for edits that don't change the track.
   useEffect(() => {
     if (!spotifyUri) {
       setLookup({ state: 'idle' })
@@ -99,6 +103,12 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
         if (!meta) {
           setLookup({ state: 'error', message: 'Spotify lookup failed' })
           return
+        }
+        // Autofill title/artist from the Spotify track — only if the user
+        // hasn't already typed something into those fields.
+        if (!titleTouched.current && meta.name) setTitle(meta.name)
+        if (!artistTouched.current && meta.artistName) {
+          setArtist(meta.artistName)
         }
         const result = await searchLyrics({
           trackName: meta.name,
@@ -136,8 +146,8 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
     return () => {
       cancelled = true
     }
-    // Intentionally only re-run on spotifyUri changes; `lyrics` is read to
-    // decide whether to auto-fill but we don't want to re-search on typing.
+    // Intentionally only re-run on spotifyUri changes; other reads inside
+    // the effect are refs or current values we don't want to re-trigger on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [spotifyUri])
 
@@ -154,6 +164,32 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
     <main>
       <h1>{initial ? 'Edit song' : 'New song'}</h1>
 
+      <label htmlFor="spotify">Spotify Link (add this and we'll try to fetch the rest)</label>
+      <input
+        id="spotify"
+        className={`title${spotifyInvalid ? ' invalid' : ''}`}
+        type="text"
+        value={spotifyInput}
+        placeholder="https://open.spotify.com/track/… or spotify:track:…"
+        onChange={(e) => setSpotifyInput(e.target.value)}
+        autoCapitalize="off"
+        autoCorrect="off"
+        spellCheck={false}
+        autoFocus={!initial}
+      />
+      {spotifyInvalid && (
+        <div className="field-hint error">
+          Not a Spotify track link. Use the "Share → Copy Song Link" URL.
+        </div>
+      )}
+      {!spotifyInvalid && (
+        <LookupStatus
+          lookup={lookup}
+          hasLyrics={lyrics.trim().length > 0}
+          onUseLookup={replaceLyricsWithLookup}
+        />
+      )}
+
       <div className="field-row">
         <div className="field">
           <label htmlFor="title">Title</label>
@@ -165,7 +201,7 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
             placeholder="Song title"
             onChange={(e) => {
               setTitle(e.target.value)
-              setTitleTouched(true)
+              titleTouched.current = true
             }}
           />
         </div>
@@ -177,34 +213,13 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
             type="text"
             value={artist}
             placeholder="Artist (optional)"
-            onChange={(e) => setArtist(e.target.value)}
+            onChange={(e) => {
+              setArtist(e.target.value)
+              artistTouched.current = true
+            }}
           />
         </div>
       </div>
-
-      <label htmlFor="spotify">Spotify link</label>
-      <input
-        id="spotify"
-        className={`title${spotifyInvalid ? ' invalid' : ''}`}
-        type="text"
-        value={spotifyInput}
-        placeholder="https://open.spotify.com/track/… or spotify:track:… (optional)"
-        onChange={(e) => setSpotifyInput(e.target.value)}
-        autoCapitalize="off"
-        autoCorrect="off"
-        spellCheck={false}
-      />
-      {spotifyInvalid && (
-        <div className="field-hint error">
-          Not a Spotify track link. Use the "Share → Copy Song Link" URL.
-        </div>
-      )}
-
-      <LookupStatus
-        lookup={lookup}
-        hasLyrics={lyrics.trim().length > 0}
-        onUseLookup={replaceLyricsWithLookup}
-      />
 
       <label htmlFor="lyrics">Lyrics</label>
       <textarea
@@ -221,8 +236,7 @@ export function Paste({ initial, canCancel, onSave, onCancel }: Props) {
             setLyricsSource('')
           }
         }}
-        placeholder="Paste lyrics here..."
-        autoFocus={!initial}
+        placeholder="Paste lyrics here (or add a Spotify link above to auto-fetch)…"
       />
 
       <div className="actions">
@@ -263,12 +277,17 @@ function LookupStatus({
 }) {
   if (lookup.state === 'idle') return null
   if (lookup.state === 'searching') {
-    return <div className="field-hint">Searching lrclib.net for synced lyrics…</div>
+    return (
+      <div className="field-hint">
+        Looking up track on Spotify and searching lrclib.net for synced lyrics…
+      </div>
+    )
   }
   if (lookup.state === 'no-auth') {
     return (
       <div className="field-hint">
-        Connect Spotify (top-right on the library) to auto-fetch synced lyrics.
+        Connect Spotify (top-right on the library) to auto-fill title, artist,
+        and synced lyrics.
       </div>
     )
   }
