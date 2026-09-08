@@ -600,26 +600,60 @@ input.title.invalid {
 }
 
 .lyric-line {
-  /* Block-level lines: each is its own click target for seek-to-timestamp.
-     Negative margin extends the hover background to the edges of the lyrics
-     column without indenting the text. */
-  padding: 0.05rem 0.35rem;
-  margin: 0 -0.35rem;
-  border-radius: 4px;
-  transition: background-color 0.12s;
+  /* Block-level lines: a ▶ button lives in a fixed-width left margin so the
+     text stays aligned across lines whether or not a given line is seekable. */
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
 }
 
-.lyric-line.seekable {
+.lyric-line-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.lyric-seek {
+  width: 1.5em;
+  flex-shrink: 0;
+  font: inherit;
+  font-size: 0.75em;
+  line-height: 1;
+  padding: 0.25em 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
   cursor: pointer;
+  /* Subtle by default so it doesn't scream for attention while transcribing;
+     brightens on hover of the whole line for easy targeting. */
+  opacity: 0.25;
+  transition: opacity 0.12s, color 0.12s;
+  text-align: center;
 }
 
-.lyric-line.seekable:hover {
-  background: var(--accent-bg);
+.lyric-seek.placeholder {
+  /* Reserve the column width on lines without a timestamp so text still
+     lines up with seekable lines above and below. */
+  cursor: default;
+  opacity: 0;
+}
+
+.lyric-line:hover .lyric-seek:not(.placeholder) {
+  opacity: 1;
+  color: var(--accent);
+}
+
+.lyric-seek:focus-visible {
+  opacity: 1;
+  color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
 }
 
 /* Empty LRC lines still render as blocks; give them a minimum height so the
    visual spacing between verses is preserved. */
-.lyric-line:empty {
+.lyric-line-text:empty {
   min-height: 1em;
 }
 
