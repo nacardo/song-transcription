@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
+import { recordLookup } from './dictionary'
 import { statusOf, tokenizeLyrics, type Token } from './lyrics'
 import type { Settings } from './settings'
 import { seekTo, subscribeToState } from './spotify-player'
@@ -26,6 +27,15 @@ function wordReferenceUrl(word: string): string {
   // Spanish → English lookup. WordReference blocks iframe embedding, so this
   // is always opened in a new tab (see the wordreference-lookup memory).
   return `https://www.wordreference.com/es/en/translation.asp?spen=${encodeURIComponent(word)}`
+}
+
+// Fire-and-forget capture: silently records the word in the user's personal
+// dictionary (backend fetches a translation asynchronously). Any failure is
+// logged but never affects the user — WordReference still opens.
+function captureLookup(word: string, songId: string): void {
+  recordLookup({ word, display: word, songId }).catch((err) => {
+    console.warn('Failed to record dictionary lookup', err)
+  })
 }
 
 // Practice hydrates progress from the backend before rendering the main UI.
@@ -290,13 +300,14 @@ function PracticeReady({
               tabIndex={-1}
               className="lookup-hint"
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() =>
+              onClick={() => {
+                captureLookup(token.text, song.id)
                 window.open(
                   wordReferenceUrl(token.text),
                   '_blank',
                   'noopener,noreferrer',
                 )
-              }
+              }}
               aria-label={`Look up "${token.text}" on WordReference`}
               title={`Look up "${token.text}" on WordReference`}
             >

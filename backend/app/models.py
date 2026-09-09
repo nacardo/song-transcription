@@ -126,3 +126,54 @@ class SettingsPatch(SQLModel):
 
 class SettingsRead(SettingsBase):
     pass
+
+
+# --- Dictionary (word lookups) ---
+# Every 📖 lookup in Practice inserts (or refreshes) a row here. The
+# `song_title` denormalization keeps the entry meaningful after the source
+# song is deleted; the FK is `SET NULL` for the same reason.
+
+
+class WordLookupBase(SQLModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    # Normalized form: lowercased + trimmed; accents preserved so `canción`
+    # and `cancion` remain distinct vocabulary entries (the user is
+    # explicitly training on accents).
+    word: str
+    # Original casing/accents from the song, for display.
+    display: str = ""
+    # Best-effort translation; empty when we couldn't fetch or the provider
+    # returned nothing usable. `translation_source` names the provider.
+    translation: str = ""
+    translation_source: str = ""
+    # Nullable so an entry survives its source song being deleted.
+    song_id: str | None = Field(
+        default=None,
+        foreign_key="song.id",
+        ondelete="SET NULL",
+    )
+    # Snapshot at creation time; the UI shows this even if `song_id` is now
+    # NULL because the song was removed.
+    song_title: str = ""
+
+
+class WordLookup(WordLookupBase, table=True):
+    __tablename__ = "word_lookup"
+    id: str = Field(primary_key=True)
+    looked_up_at: int = Field(default_factory=_now_ms)
+
+
+class WordLookupCreate(SQLModel):
+    """POST body: minimal fields the client sends. Backend fills the rest."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    word: str
+    display: str = ""
+    song_id: str | None = None
+
+
+class WordLookupRead(WordLookupBase):
+    id: str
+    looked_up_at: int

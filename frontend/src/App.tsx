@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
+import { DictionaryView } from './DictionaryView'
 import { Library } from './Library'
 import { Login } from './Login'
 import { Paste } from './Paste'
@@ -29,6 +30,7 @@ type View =
   | { name: 'paste'; editingId?: string }
   | { name: 'practice'; songId: string }
   | { name: 'settings' }
+  | { name: 'dictionary' }
 
 export default function App() {
   // authed: null = still checking session, true/false = known.
@@ -228,6 +230,16 @@ export default function App() {
         onDelete={handleDelete}
         onNew={() => setView({ name: 'paste' })}
         onOpenSettings={() => setView({ name: 'settings' })}
+        onOpenDictionary={() => setView({ name: 'dictionary' })}
+      />
+    )
+  }
+
+  if (view.name === 'dictionary') {
+    return (
+      <DictionaryView
+        onBack={() => setView({ name: 'library' })}
+        onOpenSong={(id) => setView({ name: 'practice', songId: id })}
       />
     )
   }

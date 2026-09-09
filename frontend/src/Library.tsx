@@ -10,6 +10,7 @@ type Props = {
   onDelete: (id: string) => void
   onNew: () => void
   onOpenSettings: () => void
+  onOpenDictionary: () => void
 }
 
 function relativeTime(ts: number): string {
@@ -35,6 +36,7 @@ export function Library({
   onDelete,
   onNew,
   onOpenSettings,
+  onOpenDictionary,
 }: Props) {
   return (
     <main>
@@ -42,6 +44,15 @@ export function Library({
         <h1>Your songs</h1>
         <div className="library-header-actions">
           <SpotifyStatus />
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onOpenDictionary}
+            aria-label="Dictionary"
+            title="Dictionary"
+          >
+            📖
+          </button>
           <button
             type="button"
             className="icon-btn"
