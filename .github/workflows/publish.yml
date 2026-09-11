@@ -1,0 +1,70 @@
+name: Publish container image
+
+# Build and push the app image to GHCR on every push to main (and manual
+# trigger). Watchtower on Unraid picks it up and swaps in the new container
+# on its next poll.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+# Only one publish at a time; a newer push supersedes an in-flight run.
+concurrency:
+  group: publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write  # push to ghcr.io
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR paths must be all-lowercase. `github.repository` mirrors the
+      # repo casing exactly, which may be mixed — normalize it up front.
+      - name: Compute lowercase image path
+        id: img
+        run: |
+          echo "path=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tag every image with `latest` (what Watchtower follows) and a
+      # short commit SHA (immutable, useful for rollbacks).
+      - name: Compute tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.img.outputs.path }}
+          tags: |
+            type=raw,value=latest
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          # amd64 covers Unraid. Add linux/arm64 here if you ever run this
+          # on a Raspberry Pi / Apple Silicon server.
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Baked into the JS bundle at build time — comes from the repo
+          # secret you create in GitHub Settings → Secrets → Actions.
+          build-args: |
+            VITE_SPOTIFY_CLIENT_ID=${{ secrets.VITE_SPOTIFY_CLIENT_ID }}
+          # Speeds up rebuilds by reusing layers from previous runs.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
