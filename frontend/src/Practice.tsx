@@ -3,7 +3,7 @@ import { PlayerControls } from './PlayerControls'
 import { recordLookup } from './dictionary'
 import { statusOf, tokenizeLyrics, type Token } from './lyrics'
 import type { Settings } from './settings'
-import { seekTo, subscribeToState } from './spotify-player'
+import { playFromLine, subscribeToState } from './spotify-player'
 import {
   clearProgress,
   getProgress,
@@ -224,8 +224,10 @@ function PracticeReady({
   // Click-to-seek: users hit a dedicated ▶ button in each line's left margin
   // rather than clicking the line background — the whole-line hover target
   // was fiddly and easy to hit by accident when trying to focus a word.
+  // Uses playFromLine so a paused/idle player also resumes; clicking a line
+  // should always end with the song playing from that point.
   function handleSeekClick(startMs: number) {
-    void seekTo(startMs)
+    void playFromLine(song.spotifyUri, startMs)
   }
 
   // Render a single token — extracted so the per-line render stays legible.

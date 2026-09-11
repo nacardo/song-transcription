@@ -52,10 +52,10 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
   const [devices, setDevices] = useState<Device[] | null>(null)
   const [showPicker, setShowPicker] = useState(false)
 
-  // Ref to the latest play/pause handler so the global keydown listener
-  // (mounted once) always calls the current closure. Populated mid-render
-  // below once handlePlayPause is defined.
+  // Refs to the latest handlers so the global keydown listener (mounted
+  // once) always calls the current closure. Populated mid-render below.
   const playPauseRef = useRef<() => void>(() => {})
+  const seekRef = useRef<(deltaSec: number) => void>(() => {})
 
   useEffect(() => {
     if (!isAuthenticated()) return
@@ -76,13 +76,31 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
     }
   }, [])
 
-  // Global backtick shortcut. Attached once; delegates to the ref.
+  // Global keyboard shortcuts. Attached once; delegates through refs.
+  //
+  // Bindings:
+  //   `        — play/pause (plain, no modifiers)
+  //   Shift+←  — seek back 5s        Shift+→  — seek forward 5s
+  //   Shift+Alt+← — seek back 10s    Shift+Alt+→ — seek forward 10s
+  //
+  // Shift is required on arrows so plain ←/→ stay usable for caret movement
+  // inside word inputs during transcription.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key !== '`') return
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return
-      e.preventDefault()
-      playPauseRef.current()
+      if (e.key === '`' &&
+        !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        e.preventDefault()
+        playPauseRef.current()
+        return
+      }
+      if (e.shiftKey && !e.ctrlKey && !e.metaKey) {
+        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+          const magnitude = e.altKey ? 10 : 5
+          const delta = e.key === 'ArrowLeft' ? -magnitude : magnitude
+          e.preventDefault()
+          seekRef.current(delta)
+        }
+      }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -163,9 +181,14 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
     }
   }
 
-  // Update the shortcut handler ref every render so the keydown listener
-  // sees the latest closure (which captures the latest isCurrent/isPlaying).
+  // Update the shortcut handler refs every render so the keydown listener
+  // sees the latest closures (which capture the latest isCurrent/isPlaying).
   playPauseRef.current = handlePlayPause
+  seekRef.current = (deltaSec: number) => {
+    // Match the seek buttons: no-op unless our track is the active one.
+    if (!isCurrent) return
+    void guard(() => seekBy(deltaSec))
+  }
 
   return (
     <div className="player-bar">
@@ -174,7 +197,7 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           type="button"
           onClick={() => guard(() => seekBy(-10))}
           disabled={!isCurrent}
-          title="Back 10s"
+          title="Back 10s (Shift+Alt+←)"
         >
           « 10
         </button>
@@ -182,7 +205,7 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           type="button"
           onClick={() => guard(() => seekBy(-5))}
           disabled={!isCurrent}
-          title="Back 5s"
+          title="Back 5s (Shift+←)"
         >
           « 5
         </button>
@@ -200,7 +223,7 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           type="button"
           onClick={() => guard(() => seekBy(5))}
           disabled={!isCurrent}
-          title="Forward 5s"
+          title="Forward 5s (Shift+→)"
         >
           5 »
         </button>
@@ -208,7 +231,7 @@ export function PlayerControls({ spotifyUri, initialPositionMs }: Props) {
           type="button"
           onClick={() => guard(() => seekBy(10))}
           disabled={!isCurrent}
-          title="Forward 10s"
+          title="Forward 10s (Shift+Alt+→)"
         >
           10 »
         </button>

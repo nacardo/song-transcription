@@ -421,6 +421,29 @@ export async function seekTo(positionMs: number): Promise<void> {
   }
 }
 
+// Jump to `positionMs` in `uri` and make sure playback is running.
+// Behavior:
+//   - our track already playing → just seek
+//   - our track paused          → seek then resume
+//   - a different track (or nothing) → start this one at positionMs
+// Used by the ▶ button next to each lyric line so clicking one always ends
+// with the song playing from that point.
+export async function playFromLine(
+  uri: string,
+  positionMs: number,
+): Promise<void> {
+  const current = base
+  const isSameTrack = current?.trackUri === uri
+  if (!isSameTrack) {
+    await playTrack(uri, positionMs)
+    return
+  }
+  await seekTo(positionMs)
+  if (!current?.isPlaying) {
+    await togglePlay()
+  }
+}
+
 export async function seekBy(seconds: number): Promise<void> {
   const state = computeState()
   if (!state) return
