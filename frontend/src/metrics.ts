@@ -35,12 +35,26 @@ export type SongCompletion = {
   completionPct: number
 }
 
+export type ArtistSummary = {
+  artist: string
+  songCount: number
+  wordsTranscribed: number
+}
+
 export type Metrics = {
   // Every correct answer across every song, counted with multiplicity. A
   // word that appears three times in one song contributes 3 if you got
   // all three right; also counted separately per song.
   totalWordsTranscribed: number
   uniqueWordsTranscribed: number
+  // Library-scale counts.
+  songsInLibrary: number
+  // "Started" = any correct or revealed word logged; "completed" =
+  // every word in the song is correct (reveals don't count — same rule
+  // as completionPct).
+  songsStarted: number
+  songsCompleted: number
+  distinctArtists: number
   // Words the user hit `?` on most often across the whole library — their
   // vocabulary weak spots, essentially. Sorted by count desc; capped at
   // MOST_REVEALED_LIMIT so the UI stays scannable.
@@ -48,9 +62,12 @@ export type Metrics = {
   // One row per song, sorted by completion desc so the closest-to-done
   // sit at the top.
   perSongCompletion: SongCompletion[]
+  // Artists ranked by words transcribed, capped so the list stays scannable.
+  topArtists: ArtistSummary[]
 }
 
 const MOST_REVEALED_LIMIT = 10
+const TOP_ARTISTS_LIMIT = 5
 
 export async function listAllProgress(): Promise<ProgressRow[]> {
   return apiJson<ProgressRow[]>('/api/progress')
@@ -128,10 +145,49 @@ export function computeMetrics(
     0,
   )
 
+  const songsStarted = perSongCompletion.filter(
+    (row) => row.correctWords > 0 || row.revealedWords > 0,
+  ).length
+  const songsCompleted = perSongCompletion.filter(
+    (row) => row.totalWords > 0 && row.correctWords === row.totalWords,
+  ).length
+
+  // Artist aggregation. Skip songs with no artist entered — they'd bucket
+  // together under "" and pollute the top-artists ranking.
+  const byArtist = new Map<
+    string,
+    { songCount: number; wordsTranscribed: number }
+  >()
+  for (const row of perSongCompletion) {
+    const artist = row.artist.trim()
+    if (!artist) continue
+    const bucket = byArtist.get(artist) ?? {
+      songCount: 0,
+      wordsTranscribed: 0,
+    }
+    bucket.songCount++
+    bucket.wordsTranscribed += row.correctWords
+    byArtist.set(artist, bucket)
+  }
+  const topArtists: ArtistSummary[] = Array.from(byArtist.entries())
+    .map(([artist, v]) => ({ artist, ...v }))
+    .sort(
+      (a, b) =>
+        b.wordsTranscribed - a.wordsTranscribed ||
+        b.songCount - a.songCount ||
+        a.artist.localeCompare(b.artist),
+    )
+    .slice(0, TOP_ARTISTS_LIMIT)
+
   return {
     totalWordsTranscribed,
     uniqueWordsTranscribed: uniqueCorrect.size,
+    songsInLibrary: songs.length,
+    songsStarted,
+    songsCompleted,
+    distinctArtists: byArtist.size,
     mostRevealedWords,
     perSongCompletion,
+    topArtists,
   }
 }

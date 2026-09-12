@@ -72,7 +72,32 @@ function MetricsBody({ metrics }: { metrics: Metrics }) {
           value={metrics.uniqueWordsTranscribed}
           label="Unique words transcribed"
         />
+        <StatCard value={metrics.songsInLibrary} label="Songs in library" />
+        <StatCard value={metrics.songsStarted} label="Songs started" />
+        <StatCard value={metrics.songsCompleted} label="Songs completed" />
+        <StatCard value={metrics.distinctArtists} label="Distinct artists" />
       </div>
+
+      <section className="metric-section">
+        <h2 className="metric-section-title">Top artists</h2>
+        {metrics.topArtists.length === 0 ? (
+          <p className="muted">
+            Add an artist to your songs to see a leaderboard here.
+          </p>
+        ) : (
+          <ol className="reveal-count-list">
+            {metrics.topArtists.map((row) => (
+              <li key={row.artist} className="reveal-count-row">
+                <span className="reveal-count-word">{row.artist}</span>
+                <span className="reveal-count-count">
+                  {row.wordsTranscribed} words · {row.songCount}{' '}
+                  {row.songCount === 1 ? 'song' : 'songs'}
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
 
       <section className="metric-section">
         <h2 className="metric-section-title">Most-revealed words</h2>
