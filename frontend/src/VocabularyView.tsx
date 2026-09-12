@@ -23,6 +23,13 @@ function wordReferenceUrl(word: string): string {
   return `https://www.wordreference.com/es/en/translation.asp?spen=${encodeURIComponent(word)}`
 }
 
+// Spanish → English on Google Translate. WordReference is great for single
+// words (definitions, examples, forums) but weak on multi-word phrases —
+// Google Translate is a better fit for full phrases.
+function googleTranslateUrl(text: string): string {
+  return `https://translate.google.com/?sl=es&tl=en&op=translate&text=${encodeURIComponent(text)}`
+}
+
 export function VocabularyView({ onBack, onOpenSong }: Props) {
   const [tab, setTab] = useState<Tab>('words')
   const [words, setWords] = useState<WordLookup[] | null>(null)
@@ -212,7 +219,15 @@ function PhrasesPanel({
       {entries.map((p) => (
         <li key={p.id} className="dictionary-row">
           <div className="dictionary-word">
-            <span className="dictionary-word-link">{p.text}</span>
+            <a
+              href={googleTranslateUrl(p.text)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="dictionary-word-link"
+              title="Open in Google Translate"
+            >
+              {p.text}
+            </a>
             {p.translation && (
               <span className="dictionary-translation">
                 {' — '}
