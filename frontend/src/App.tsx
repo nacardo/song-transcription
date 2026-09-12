@@ -3,6 +3,7 @@ import './App.css'
 import { DictionaryView } from './DictionaryView'
 import { Library } from './Library'
 import { Login } from './Login'
+import { MetricsView } from './MetricsView'
 import { Paste } from './Paste'
 import { Practice } from './Practice'
 import { SettingsView } from './SettingsView'
@@ -31,6 +32,7 @@ type View =
   | { name: 'practice'; songId: string }
   | { name: 'settings' }
   | { name: 'dictionary' }
+  | { name: 'metrics' }
 
 export default function App() {
   // authed: null = still checking session, true/false = known.
@@ -231,6 +233,7 @@ export default function App() {
         onNew={() => setView({ name: 'paste' })}
         onOpenSettings={() => setView({ name: 'settings' })}
         onOpenDictionary={() => setView({ name: 'dictionary' })}
+        onOpenMetrics={() => setView({ name: 'metrics' })}
       />
     )
   }
@@ -242,6 +245,10 @@ export default function App() {
         onOpenSong={(id) => setView({ name: 'practice', songId: id })}
       />
     )
+  }
+
+  if (view.name === 'metrics') {
+    return <MetricsView onBack={() => setView({ name: 'library' })} />
   }
 
   if (view.name === 'settings') {

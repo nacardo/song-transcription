@@ -342,6 +342,134 @@ button.icon-btn {
   font-size: 0.95rem;
 }
 
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.stat-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  background: var(--bg);
+}
+
+.stat-number {
+  font-size: 2.25rem;
+  font-weight: 500;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-label {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
+.metric-section {
+  margin-top: 2rem;
+}
+
+.metric-section-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-h);
+  margin: 0 0 0.5rem;
+}
+
+.reveal-count-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.reveal-count-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.reveal-count-word {
+  color: var(--text-h);
+}
+
+.reveal-count-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.completion-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.completion-row {
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.completion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.completion-title {
+  color: var(--text-h);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion-artist {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.completion-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.completion-bar {
+  display: flex;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.35rem 0 0.25rem;
+}
+
+.completion-fill.correct {
+  background: var(--correct);
+}
+
+.completion-fill.revealed {
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.completion-meta {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
 .dictionary-list {
   list-style: none;
   padding: 0;
