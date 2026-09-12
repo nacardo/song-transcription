@@ -1,7 +1,9 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlmodel import Session
+from pydantic import BaseModel, ConfigDict
+from pydantic.alias_generators import to_camel
+from sqlmodel import Session, select
 
 from ..db import get_session
 from ..deps import require_auth
@@ -16,6 +18,29 @@ router = APIRouter(
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+class ProgressWithSongId(ProgressRead):
+    """List-all response row — adds songId so callers can join back to Song
+    without a second round-trip. The single-song GET below returns the song
+    id via the URL path, so it doesn't need this."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    song_id: str
+
+
+@router.get(
+    "",
+    response_model=list[ProgressWithSongId],
+    response_model_by_alias=True,
+)
+def list_progress(
+    session: Session = Depends(get_session),
+) -> list[Progress]:
+    """All progress rows, one per song that has any. Metrics view uses this
+    to compute totals across the whole library in a single call."""
+    return list(session.exec(select(Progress)).all())
 
 
 @router.get(

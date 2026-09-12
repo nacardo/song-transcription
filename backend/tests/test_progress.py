@@ -90,3 +90,24 @@ def test_defaults_when_fields_omitted(client: TestClient) -> None:
     assert body["answers"] == {}
     assert body["revealed"] == []
     assert body["positionMs"] is None
+
+
+def test_list_all_progress(client: TestClient) -> None:
+    """GET /api/progress returns every progress row with its songId, so the
+    metrics view can aggregate the whole library in one call."""
+    for i in range(3):
+        _make_song(client, song_id=f"song-{i}")
+        client.put(
+            f"/api/progress/song-{i}",
+            json={"answers": {"0": f"answer-{i}"}, "revealed": [i]},
+        )
+    rows = client.get("/api/progress").json()
+    assert len(rows) == 3
+    by_id = {row["songId"]: row for row in rows}
+    assert set(by_id.keys()) == {"song-0", "song-1", "song-2"}
+    assert by_id["song-1"]["answers"] == {"0": "answer-1"}
+    assert by_id["song-1"]["revealed"] == [1]
+
+
+def test_list_all_progress_empty(client: TestClient) -> None:
+    assert client.get("/api/progress").json() == []

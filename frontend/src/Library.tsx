@@ -11,6 +11,7 @@ type Props = {
   onNew: () => void
   onOpenSettings: () => void
   onOpenDictionary: () => void
+  onOpenMetrics: () => void
 }
 
 function relativeTime(ts: number): string {
@@ -37,6 +38,7 @@ export function Library({
   onNew,
   onOpenSettings,
   onOpenDictionary,
+  onOpenMetrics,
 }: Props) {
   return (
     <main>
@@ -44,6 +46,15 @@ export function Library({
         <h1>Your songs</h1>
         <div className="library-header-actions">
           <SpotifyStatus />
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={onOpenMetrics}
+            aria-label="Metrics"
+            title="Metrics"
+          >
+            📊
+          </button>
           <button
             type="button"
             className="icon-btn"

@@ -342,6 +342,35 @@ button.icon-btn {
   font-size: 0.95rem;
 }
 
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.stat-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 1.25rem 1rem;
+  text-align: center;
+  background: var(--bg);
+}
+
+.stat-number {
+  font-size: 2.25rem;
+  font-weight: 500;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.stat-label {
+  margin-top: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text);
+}
+
 .dictionary-list {
   list-style: none;
   padding: 0;
