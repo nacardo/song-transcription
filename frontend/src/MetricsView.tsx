@@ -87,6 +87,70 @@ function MetricsBody({ metrics }: { metrics: Metrics }) {
           </ol>
         )}
       </section>
+
+      <section className="metric-section">
+        <h2 className="metric-section-title">Per-song completion</h2>
+        {metrics.perSongCompletion.length === 0 ? (
+          <p className="muted">Add a song to start tracking completion.</p>
+        ) : (
+          <ul className="completion-list">
+            {metrics.perSongCompletion.map((row) => {
+              // Revealed segment sits after the correct segment on the bar.
+              // Both are clamped so a very-small song with lots of reveals
+              // doesn't overflow the container mathematically.
+              const correctPct =
+                row.totalWords === 0
+                  ? 0
+                  : (row.correctWords / row.totalWords) * 100
+              const revealedPct =
+                row.totalWords === 0
+                  ? 0
+                  : Math.min(
+                      100 - correctPct,
+                      (row.revealedWords / row.totalWords) * 100,
+                    )
+              return (
+                <li key={row.songId} className="completion-row">
+                  <div className="completion-header">
+                    <span className="completion-title">
+                      {row.title}
+                      {row.artist && (
+                        <span className="completion-artist">
+                          {' · '}
+                          {row.artist}
+                        </span>
+                      )}
+                    </span>
+                    <span className="completion-pct">
+                      {row.completionPct.toFixed(0)}%
+                    </span>
+                  </div>
+                  <div
+                    className="completion-bar"
+                    role="progressbar"
+                    aria-valuenow={Math.round(row.completionPct)}
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                  >
+                    <div
+                      className="completion-fill correct"
+                      style={{ width: `${correctPct}%` }}
+                    />
+                    <div
+                      className="completion-fill revealed"
+                      style={{ width: `${revealedPct}%` }}
+                    />
+                  </div>
+                  <div className="completion-meta">
+                    {row.correctWords} correct · {row.revealedWords} revealed
+                    · {row.totalWords} total
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
+        )}
+      </section>
     </>
   )
 }

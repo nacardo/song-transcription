@@ -407,6 +407,69 @@ button.icon-btn {
   font-size: 0.9rem;
 }
 
+.completion-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.completion-row {
+  padding: 0.7rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.completion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.completion-title {
+  color: var(--text-h);
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completion-artist {
+  color: var(--text);
+  font-weight: 400;
+}
+
+.completion-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.completion-bar {
+  display: flex;
+  height: 6px;
+  background: var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.35rem 0 0.25rem;
+}
+
+.completion-fill.correct {
+  background: var(--correct);
+}
+
+.completion-fill.revealed {
+  background: var(--accent);
+  opacity: 0.55;
+}
+
+.completion-meta {
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
 .dictionary-list {
   list-style: none;
   padding: 0;
