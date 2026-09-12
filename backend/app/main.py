@@ -8,7 +8,7 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from .config import settings as app_settings
 from .db import init_db
-from .routers import auth, dictionary, lyrics, progress, settings, songs
+from .routers import auth, dictionary, lyrics, phrases, progress, settings, songs
 
 
 @asynccontextmanager
@@ -32,6 +32,7 @@ app.include_router(progress.router)
 app.include_router(settings.router)
 app.include_router(lyrics.router)
 app.include_router(dictionary.router)
+app.include_router(phrases.router)
 
 
 @app.get("/api/health")

@@ -10,7 +10,7 @@ type Props = {
   onDelete: (id: string) => void
   onNew: () => void
   onOpenSettings: () => void
-  onOpenDictionary: () => void
+  onOpenVocabulary: () => void
   onOpenMetrics: () => void
 }
 
@@ -37,7 +37,7 @@ export function Library({
   onDelete,
   onNew,
   onOpenSettings,
-  onOpenDictionary,
+  onOpenVocabulary,
   onOpenMetrics,
 }: Props) {
   return (
@@ -58,9 +58,9 @@ export function Library({
           <button
             type="button"
             className="icon-btn"
-            onClick={onOpenDictionary}
-            aria-label="Dictionary"
-            title="Dictionary"
+            onClick={onOpenVocabulary}
+            aria-label="Vocabulary"
+            title="Vocabulary"
           >
             📖
           </button>

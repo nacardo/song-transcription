@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
 import { recordLookup } from './dictionary'
 import { statusOf, tokenizeLyrics, type Token } from './lyrics'
+import { savePhrase } from './phrases'
 import type { Settings } from './settings'
 import { playFromLine, subscribeToState } from './spotify-player'
 import {
@@ -17,6 +18,10 @@ type Props = {
   settings: Settings
   onBack: () => void
   onEdit: () => void
+  // Optional: when set, seek playback to this word's synced-lyrics timestamp
+  // on mount. Used by the Vocabulary → Phrases flow so clicking a saved
+  // phrase drops you into the song at the right spot.
+  jumpToWordIndex?: number
 }
 
 // Save no more often than this while the user is typing — one HTTP PUT per
@@ -36,6 +41,37 @@ function captureLookup(word: string, songId: string): void {
   recordLookup({ word, display: word, songId }).catch((err) => {
     console.warn('Failed to record dictionary lookup', err)
   })
+}
+
+// Walk the token stream between two word indices (inclusive) and rebuild
+// the human-readable text: word tokens plus their intervening gaps, with
+// newlines collapsed to spaces. Headers are skipped so a phrase that spans
+// a section boundary reads naturally.
+function extractPhraseText(
+  tokens: Token[],
+  startWordIndex: number,
+  endWordIndex: number,
+): string {
+  const [lo, hi] =
+    startWordIndex <= endWordIndex
+      ? [startWordIndex, endWordIndex]
+      : [endWordIndex, startWordIndex]
+  let startPos = -1
+  let endPos = -1
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i]
+    if (t.kind !== 'word') continue
+    if (t.index === lo && startPos === -1) startPos = i
+    if (t.index === hi) endPos = i
+  }
+  if (startPos === -1 || endPos === -1) return ''
+  return tokens
+    .slice(startPos, endPos + 1)
+    .filter((t) => t.kind !== 'header')
+    .map((t) => t.text)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 // Practice hydrates progress from the backend before rendering the main UI.
@@ -101,6 +137,7 @@ function PracticeReady({
   onEdit,
   initial,
   loadError,
+  jumpToWordIndex,
 }: ReadyProps) {
   const [answers, setAnswers] = useState<Record<number, string>>(
     initial?.answers ?? {},
@@ -113,6 +150,14 @@ function PracticeReady({
   )
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null)
   const inputRefs = useRef(new Map<number, HTMLInputElement>())
+
+  // Phrase-selection mode: entered via the 📌 FAB, exited on second click,
+  // second word pick, or Escape. `phraseStart` remembers the first-clicked
+  // word so we can compute the range on the second click.
+  type PhraseMode = 'off' | 'awaiting-start' | 'awaiting-end'
+  const [phraseMode, setPhraseMode] = useState<PhraseMode>('off')
+  const [phraseStart, setPhraseStart] = useState<number | null>(null)
+  const inPhraseMode = phraseMode !== 'off'
 
   // Prefer LRC-derived tokens when we have synced lyrics; `lines[].startMs`
   // drives click-to-seek below. Falls back to plain-lyrics tokenization
@@ -221,6 +266,70 @@ function PracticeReady({
     })
   }
 
+  // Jump-to-word on mount / when the parent passes a new target index.
+  // No-op when the song has no synced lyrics — nothing to seek to.
+  useEffect(() => {
+    if (jumpToWordIndex == null) return
+    if (!song.spotifyUri) return
+    const token = tokens.find(
+      (t) => t.kind === 'word' && t.index === jumpToWordIndex,
+    )
+    if (!token) return
+    const line = lines[token.lineIndex]
+    if (!line || line.startMs == null) return
+    void playFromLine(song.spotifyUri, line.startMs)
+  }, [jumpToWordIndex, tokens, lines, song.spotifyUri])
+
+  // Phrase mode: escape at any time cancels. Only registered while active.
+  useEffect(() => {
+    if (!inPhraseMode) return
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setPhraseMode('off')
+        setPhraseStart(null)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [inPhraseMode])
+
+  function togglePhraseMode() {
+    if (inPhraseMode) {
+      setPhraseMode('off')
+      setPhraseStart(null)
+    } else {
+      setPhraseMode('awaiting-start')
+      setPhraseStart(null)
+    }
+  }
+
+  function pickPhraseWord(wordIndex: number) {
+    if (phraseMode === 'awaiting-start') {
+      setPhraseStart(wordIndex)
+      setPhraseMode('awaiting-end')
+      return
+    }
+    if (phraseMode === 'awaiting-end' && phraseStart !== null) {
+      const [lo, hi] =
+        phraseStart <= wordIndex
+          ? [phraseStart, wordIndex]
+          : [wordIndex, phraseStart]
+      const text = extractPhraseText(tokens, lo, hi)
+      setPhraseMode('off')
+      setPhraseStart(null)
+      if (!text) return
+      void savePhrase({
+        text,
+        songId: song.id,
+        startIndex: lo,
+        endIndex: hi,
+      }).catch((err) => {
+        console.warn('Failed to save phrase', err)
+      })
+    }
+  }
+
   // Click-to-seek: users hit a dedicated ▶ button in each line's left margin
   // rather than clicking the line background — the whole-line hover target
   // was fiddly and easy to hit by accident when trying to focus a word.
@@ -256,30 +365,28 @@ function PracticeReady({
     // they typed the diacritic-free version.
     const displayValue =
       isRevealed || status === 'correct' ? token.text : answer
-    return (
-      <span key={keyIdx} className="word-slot">
-        <input
-          ref={(el) => {
-            if (el) inputRefs.current.set(token.index, el)
-            else inputRefs.current.delete(token.index)
-          }}
-          className={`word ${stateClass}`}
-          size={Math.max(token.text.length, 2)}
-          value={displayValue}
-          readOnly={isRevealed}
-          onChange={(e) =>
+    const isPhraseStart = phraseStart === token.index
+    // In phrase mode we hijack the input: prevent focus (so no caret /
+    // typing distraction), and forward the click to phrase-pick. Everything
+    // else stays wired to the normal handlers when phrase mode is off.
+    const phraseInputProps = inPhraseMode
+      ? {
+          readOnly: true,
+          onMouseDown: (e: React.MouseEvent<HTMLInputElement>) =>
+            e.preventDefault(),
+          onClick: () => pickPhraseWord(token.index),
+        }
+      : {
+          readOnly: isRevealed,
+          onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
             setAnswers((prev) => ({
               ...prev,
               [token.index]: e.target.value,
-            }))
-          }
-          onFocus={() => setFocusedIndex(token.index)}
-          onBlur={() =>
-            setFocusedIndex((cur) =>
-              cur === token.index ? null : cur,
-            )
-          }
-          onKeyDown={(e) => {
+            })),
+          onFocus: () => setFocusedIndex(token.index),
+          onBlur: () =>
+            setFocusedIndex((cur) => (cur === token.index ? null : cur)),
+          onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
             if (e.key === '?') {
               e.preventDefault()
               if (!isRevealed && status !== 'correct') {
@@ -289,13 +396,26 @@ function PracticeReady({
               e.preventDefault()
               focusNextWord(token.index)
             }
+          },
+        }
+    return (
+      <span key={keyIdx} className="word-slot">
+        <input
+          ref={(el) => {
+            if (el) inputRefs.current.set(token.index, el)
+            else inputRefs.current.delete(token.index)
           }}
+          className={`word ${stateClass}${isPhraseStart ? ' phrase-start' : ''}`}
+          size={Math.max(token.text.length, 2)}
+          value={displayValue}
           aria-label={`Word ${token.index + 1}`}
           autoCapitalize="off"
           autoCorrect="off"
           spellCheck={false}
+          {...phraseInputProps}
         />
-        {isFocused &&
+        {!inPhraseMode &&
+          isFocused &&
           (isRevealed || status === 'correct' ? (
             <button
               type="button"
@@ -392,6 +512,21 @@ function PracticeReady({
         />
       )}
 
+      {inPhraseMode && (
+        <div className="phrase-banner" role="status">
+          {phraseMode === 'awaiting-start'
+            ? 'Click the first word of your phrase.'
+            : 'Now click the last word.'}
+          <button
+            type="button"
+            className="link small"
+            onClick={togglePhraseMode}
+          >
+            Cancel (Esc)
+          </button>
+        </div>
+      )}
+
       <div className="lyrics">
         {linesForRender.map(({ lineIndex, tokens, startMs }) => {
           // Section-header lines aren't timed and get no line wrapper — they
@@ -440,6 +575,19 @@ function PracticeReady({
           Reset progress
         </button>
       </div>
+
+      {/* Floating action button for phrase mode — fixed to the viewport so
+          it's reachable without scrolling. Renders on every song regardless
+          of whether Spotify is connected (unlike the player bar). */}
+      <button
+        type="button"
+        className={`phrase-fab${inPhraseMode ? ' active' : ''}`}
+        onClick={togglePhraseMode}
+        aria-label={inPhraseMode ? 'Cancel phrase selection' : 'Save a phrase'}
+        title={inPhraseMode ? 'Cancel phrase selection' : 'Save a phrase'}
+      >
+        {inPhraseMode ? '✕' : '📌'}
+      </button>
     </main>
   )
 }

@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import './App.css'
-import { DictionaryView } from './DictionaryView'
 import { Library } from './Library'
 import { Login } from './Login'
 import { MetricsView } from './MetricsView'
 import { Paste } from './Paste'
 import { Practice } from './Practice'
 import { SettingsView } from './SettingsView'
+import { VocabularyView } from './VocabularyView'
 import { checkSession, logout as apiLogout, onUnauthorized } from './api'
 import {
   DEFAULTS as SETTINGS_DEFAULTS,
@@ -29,9 +29,11 @@ import {
 type View =
   | { name: 'library' }
   | { name: 'paste'; editingId?: string }
-  | { name: 'practice'; songId: string }
+  // `jumpToWordIndex`: when set, Practice seeks playback to that word's
+  // synced-lyrics timestamp on mount (used from the phrases list).
+  | { name: 'practice'; songId: string; jumpToWordIndex?: number }
   | { name: 'settings' }
-  | { name: 'dictionary' }
+  | { name: 'vocabulary' }
   | { name: 'metrics' }
 
 export default function App() {
@@ -232,17 +234,19 @@ export default function App() {
         onDelete={handleDelete}
         onNew={() => setView({ name: 'paste' })}
         onOpenSettings={() => setView({ name: 'settings' })}
-        onOpenDictionary={() => setView({ name: 'dictionary' })}
+        onOpenVocabulary={() => setView({ name: 'vocabulary' })}
         onOpenMetrics={() => setView({ name: 'metrics' })}
       />
     )
   }
 
-  if (view.name === 'dictionary') {
+  if (view.name === 'vocabulary') {
     return (
-      <DictionaryView
+      <VocabularyView
         onBack={() => setView({ name: 'library' })}
-        onOpenSong={(id) => setView({ name: 'practice', songId: id })}
+        onOpenSong={(id, jumpToWordIndex) =>
+          setView({ name: 'practice', songId: id, jumpToWordIndex })
+        }
       />
     )
   }
@@ -285,6 +289,7 @@ export default function App() {
     <Practice
       song={song}
       settings={settings}
+      jumpToWordIndex={view.jumpToWordIndex}
       onBack={() => setView({ name: 'library' })}
       onEdit={() => setView({ name: 'paste', editingId: song.id })}
     />

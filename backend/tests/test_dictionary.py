@@ -119,11 +119,16 @@ def test_same_word_different_songs_are_distinct(
 
 
 def test_list_newest_first(client: TestClient, stub_translate) -> None:
+    import time
+
     _calls, state = stub_translate
     state["result"] = None
     song_id = _make_song(client)
 
     for w in ("uno", "dos", "tres"):
+        # looked_up_at is millisecond precision; sequential POSTs can
+        # collide, so wait a tick for deterministic ordering.
+        time.sleep(0.002)
         client.post("/api/dictionary", json={"word": w, "songId": song_id})
 
     words = [e["word"] for e in client.get("/api/dictionary").json()]

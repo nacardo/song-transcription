@@ -177,3 +177,52 @@ class WordLookupCreate(SQLModel):
 class WordLookupRead(WordLookupBase):
     id: str
     looked_up_at: int
+
+
+# --- Phrases (multi-word saved stretches) ---
+# Parallels WordLookup but stores a range of word indices so a saved phrase
+# can later jump playback to its start timestamp when synced lyrics exist.
+
+
+class PhraseLookupBase(SQLModel):
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    # The phrase as it appears in the song (whitespace-collapsed).
+    text: str
+    translation: str = ""
+    translation_source: str = ""  # "mymemory" | ""
+    # Same SET NULL + song_title snapshot pattern as WordLookup so a saved
+    # phrase survives its source song being deleted.
+    song_id: str | None = Field(
+        default=None,
+        foreign_key="song.id",
+        ondelete="SET NULL",
+    )
+    song_title: str = ""
+    # Word-index range within the song. Inclusive on both ends. Kept even
+    # after `song_id` is nulled so we still know where in the (now-deleted)
+    # song this came from.
+    start_index: int
+    end_index: int
+
+
+class PhraseLookup(PhraseLookupBase, table=True):
+    __tablename__ = "phrase_lookup"
+    id: str = Field(primary_key=True)
+    saved_at: int = Field(default_factory=_now_ms)
+
+
+class PhraseLookupCreate(SQLModel):
+    """POST body: minimal fields the client sends. Backend fills the rest."""
+
+    model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)
+
+    text: str
+    song_id: str | None = None
+    start_index: int
+    end_index: int
+
+
+class PhraseLookupRead(PhraseLookupBase):
+    id: str
+    saved_at: int
