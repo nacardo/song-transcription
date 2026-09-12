@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { PlayerControls } from './PlayerControls'
 import { recordLookup } from './dictionary'
-import { statusOf, tokenizeLyrics, type Token } from './lyrics'
+import { normalize, statusOf, tokenizeLyrics, type Token } from './lyrics'
 import { savePhrase } from './phrases'
 import type { Settings } from './settings'
 import { playFromLine, subscribeToState } from './spotify-player'
@@ -191,6 +191,115 @@ function PracticeReady({
         startMs: lines[lineIndex]?.startMs,
       }))
   }, [tokens, lines])
+
+  // Duplicate-line detection for the auto-fill affordance. Two lines match
+  // only when their full normalized word sequences are identical (same word
+  // count, same normalized words, in order). This is intentionally strict so
+  // a short common phrase like "yo soy" that appears inside a longer line
+  // doesn't trigger cross-line fills.
+  const duplicateLineIndexMap = useMemo(() => {
+    const groupsByKey = new Map<string, number[]>()
+    for (const { lineIndex, tokens } of linesForRender) {
+      const words = tokens.filter((t) => t.kind === 'word')
+      if (words.length === 0) continue
+      const key = words.map((t) => normalize(t.text)).join(' ')
+      const arr = groupsByKey.get(key) ?? []
+      arr.push(lineIndex)
+      groupsByKey.set(key, arr)
+    }
+    // For each line, the list of OTHER lines sharing its key. Lines that
+    // aren't repeated aren't in the map at all.
+    const map = new Map<number, number[]>()
+    for (const [, members] of groupsByKey) {
+      if (members.length < 2) continue
+      for (const m of members) {
+        map.set(
+          m,
+          members.filter((x) => x !== m),
+        )
+      }
+    }
+    return map
+  }, [linesForRender])
+
+  const songHasDuplicateLines = duplicateLineIndexMap.size > 0
+
+  // For a given line, does it have at least one word that isn't correct yet
+  // AND isn't revealed? Only such lines are candidates for filling.
+  function lineHasFillableWords(lineIndex: number): boolean {
+    const line = linesForRender.find((l) => l.lineIndex === lineIndex)
+    if (!line) return false
+    const words = line.tokens.filter((t) => t.kind === 'word')
+    return words.some((t) => {
+      if (revealed.has(t.index)) return false
+      const answer = answers[t.index] ?? ''
+      return (
+        statusOf(answer, t.text, {
+          requireAccents: settings.requireAccents,
+        }) !== 'correct'
+      )
+    })
+  }
+
+  // Is every word in this line fully typed correctly? Reveals do NOT count
+  // — a line that's half-revealed isn't a valid source of truth for
+  // duplicating answers into a repeat.
+  function lineIsFullyTypedCorrect(lineIndex: number): boolean {
+    const line = linesForRender.find((l) => l.lineIndex === lineIndex)
+    if (!line) return false
+    const words = line.tokens.filter((t) => t.kind === 'word')
+    if (words.length === 0) return false
+    return words.every((t) => {
+      if (revealed.has(t.index)) return false
+      const answer = answers[t.index] ?? ''
+      return (
+        statusOf(answer, t.text, {
+          requireAccents: settings.requireAccents,
+        }) === 'correct'
+      )
+    })
+  }
+
+  // First duplicate line (by lineIndex order) that qualifies as a fill
+  // source for the given target line. Null if none — button is hidden then.
+  function findFillSource(targetLineIndex: number): number | null {
+    if (!lineHasFillableWords(targetLineIndex)) return null
+    const dupes = duplicateLineIndexMap.get(targetLineIndex)
+    if (!dupes) return null
+    for (const idx of dupes) {
+      if (lineIsFullyTypedCorrect(idx)) return idx
+    }
+    return null
+  }
+
+  function fillLineFromSource(
+    sourceLineIndex: number,
+    targetLineIndex: number,
+  ) {
+    const source = linesForRender.find((l) => l.lineIndex === sourceLineIndex)
+    const target = linesForRender.find((l) => l.lineIndex === targetLineIndex)
+    if (!source || !target) return
+    const sourceWords = source.tokens.filter((t) => t.kind === 'word')
+    const targetWords = target.tokens.filter((t) => t.kind === 'word')
+    // Duplicate detection already guarantees same length; belt + braces.
+    if (sourceWords.length !== targetWords.length) return
+    setAnswers((prev) => {
+      const next = { ...prev }
+      for (let k = 0; k < targetWords.length; k++) {
+        const targetToken = targetWords[k]
+        // Leave revealed words alone — user opted to reveal them, not fill.
+        if (revealed.has(targetToken.index)) continue
+        const existing = next[targetToken.index] ?? ''
+        const alreadyCorrect =
+          statusOf(existing, targetToken.text, {
+            requireAccents: settings.requireAccents,
+          }) === 'correct'
+        if (alreadyCorrect) continue
+        next[targetToken.index] = prev[sourceWords[k].index] ?? ''
+      }
+      return next
+    })
+  }
 
   // Debounced save: clear pending write on each change, save 500 ms after the
   // last change. `void` because we don't await inside an effect.
@@ -574,6 +683,9 @@ function PracticeReady({
             )
           }
           const seekable = startMs !== undefined
+          const fillSource = songHasDuplicateLines
+            ? findFillSource(lineIndex)
+            : null
           return (
             <div
               key={lineIndex}
@@ -594,6 +706,24 @@ function PracticeReady({
               ) : (
                 <span className="lyric-seek placeholder" aria-hidden="true" />
               )}
+              {/* Reserve the fill column only when the song has any
+                  duplicate lines — otherwise it's just wasted margin. */}
+              {songHasDuplicateLines &&
+                (fillSource !== null ? (
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="lyric-fill"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => fillLineFromSource(fillSource, lineIndex)}
+                    aria-label="Fill this line from an earlier repeat"
+                    title="Fill this line from an earlier repeat"
+                  >
+                    🔁
+                  </button>
+                ) : (
+                  <span className="lyric-fill placeholder" aria-hidden="true" />
+                ))}
               <span className="lyric-line-text">
                 {tokens.map((token, i) => renderToken(token, i))}
               </span>
