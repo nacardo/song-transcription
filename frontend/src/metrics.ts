@@ -36,6 +36,10 @@ export type SongCompletion = {
 }
 
 export type Metrics = {
+  // Every correct answer across every song, counted with multiplicity. A
+  // word that appears three times in one song contributes 3 if you got
+  // all three right; also counted separately per song.
+  totalWordsTranscribed: number
   uniqueWordsTranscribed: number
   // Words the user hit `?` on most often across the whole library — their
   // vocabulary weak spots, essentially. Sorted by count desc; capped at
@@ -119,7 +123,13 @@ export function computeMetrics(
     .sort((a, b) => b.count - a.count || a.word.localeCompare(b.word))
     .slice(0, MOST_REVEALED_LIMIT)
 
+  const totalWordsTranscribed = perSongCompletion.reduce(
+    (sum, row) => sum + row.correctWords,
+    0,
+  )
+
   return {
+    totalWordsTranscribed,
     uniqueWordsTranscribed: uniqueCorrect.size,
     mostRevealedWords,
     perSongCompletion,

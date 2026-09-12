@@ -65,6 +65,10 @@ function MetricsBody({ metrics }: { metrics: Metrics }) {
     <>
       <div className="stat-grid">
         <StatCard
+          value={metrics.totalWordsTranscribed}
+          label="Total words transcribed"
+        />
+        <StatCard
           value={metrics.uniqueWordsTranscribed}
           label="Unique words transcribed"
         />
