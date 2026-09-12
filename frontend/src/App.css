@@ -371,6 +371,42 @@ button.icon-btn {
   color: var(--text);
 }
 
+.metric-section {
+  margin-top: 2rem;
+}
+
+.metric-section-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-h);
+  margin: 0 0 0.5rem;
+}
+
+.reveal-count-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.reveal-count-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0.5rem 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.reveal-count-word {
+  color: var(--text-h);
+}
+
+.reveal-count-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
 .dictionary-list {
   list-style: none;
   padding: 0;

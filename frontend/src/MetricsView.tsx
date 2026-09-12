@@ -62,12 +62,32 @@ export function MetricsView({ onBack }: Props) {
 
 function MetricsBody({ metrics }: { metrics: Metrics }) {
   return (
-    <div className="stat-grid">
-      <StatCard
-        value={metrics.uniqueWordsTranscribed}
-        label="Unique words transcribed"
-      />
-    </div>
+    <>
+      <div className="stat-grid">
+        <StatCard
+          value={metrics.uniqueWordsTranscribed}
+          label="Unique words transcribed"
+        />
+      </div>
+
+      <section className="metric-section">
+        <h2 className="metric-section-title">Most-revealed words</h2>
+        {metrics.mostRevealedWords.length === 0 ? (
+          <p className="muted">
+            None yet — words you hit <em>?</em> on will show up here.
+          </p>
+        ) : (
+          <ol className="reveal-count-list">
+            {metrics.mostRevealedWords.map((row) => (
+              <li key={row.word} className="reveal-count-row">
+                <span className="reveal-count-word">{row.word}</span>
+                <span className="reveal-count-count">{row.count}</span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </>
   )
 }
 
