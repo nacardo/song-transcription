@@ -28,6 +28,9 @@ type Props = {
 // keystroke is wasteful when we only care about eventual consistency.
 const SAVE_DEBOUNCE_MS = 500
 
+// How long the "phrase saved" confirmation banner sticks around.
+const PHRASE_TOAST_MS = 2500
+
 function wordReferenceUrl(word: string): string {
   // Spanish → English lookup. WordReference blocks iframe embedding, so this
   // is always opened in a new tab (see the wordreference-lookup memory).
@@ -157,6 +160,9 @@ function PracticeReady({
   type PhraseMode = 'off' | 'awaiting-start' | 'awaiting-end'
   const [phraseMode, setPhraseMode] = useState<PhraseMode>('off')
   const [phraseStart, setPhraseStart] = useState<number | null>(null)
+  // Transient text of the last-saved phrase — drives the confirmation
+  // banner. Cleared by a timer after PHRASE_TOAST_MS.
+  const [phraseSavedText, setPhraseSavedText] = useState<string | null>(null)
   const inPhraseMode = phraseMode !== 'off'
 
   // Prefer LRC-derived tokens when we have synced lyrics; `lines[].startMs`
@@ -319,6 +325,9 @@ function PracticeReady({
       setPhraseMode('off')
       setPhraseStart(null)
       if (!text) return
+      // Optimistic confirmation — banner appears the moment the click
+      // registers, without waiting on the network round-trip.
+      setPhraseSavedText(text)
       void savePhrase({
         text,
         songId: song.id,
@@ -329,6 +338,16 @@ function PracticeReady({
       })
     }
   }
+
+  // Auto-dismiss the "phrase saved" banner after a short window.
+  useEffect(() => {
+    if (!phraseSavedText) return
+    const t = window.setTimeout(
+      () => setPhraseSavedText(null),
+      PHRASE_TOAST_MS,
+    )
+    return () => window.clearTimeout(t)
+  }, [phraseSavedText])
 
   // Click-to-seek: users hit a dedicated ▶ button in each line's left margin
   // rather than clicking the line background — the whole-line hover target
@@ -527,7 +546,23 @@ function PracticeReady({
         </div>
       )}
 
-      <div className="lyrics">
+      {phraseSavedText && !inPhraseMode && (
+        <div className="phrase-banner saved" role="status">
+          <span>
+            ✓ Saved phrase: <em>{phraseSavedText}</em>
+          </span>
+          <button
+            type="button"
+            className="link small"
+            onClick={() => setPhraseSavedText(null)}
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      <div className={`lyrics${inPhraseMode ? ' phrase-mode' : ''}`}>
         {linesForRender.map(({ lineIndex, tokens, startMs }) => {
           // Section-header lines aren't timed and get no line wrapper — they
           // render as standalone <h2>s to preserve today's block spacing.

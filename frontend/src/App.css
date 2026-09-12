@@ -982,6 +982,34 @@ input.title.invalid {
   font-size: 0.9rem;
 }
 
+.phrase-banner.saved {
+  border-color: var(--correct);
+  background: transparent;
+  animation: phrase-toast-in 0.15s ease-out;
+}
+
+.phrase-banner.saved em {
+  font-style: normal;
+  font-weight: 500;
+}
+
+@keyframes phrase-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* While selecting a phrase, word inputs behave as click targets — swap
+   the text-cursor for the hand cursor to signal that. */
+.lyrics.phrase-mode .word {
+  cursor: pointer;
+}
+
 .phrase-fab {
   position: fixed;
   bottom: 1.25rem;
